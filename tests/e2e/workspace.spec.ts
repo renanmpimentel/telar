@@ -57,12 +57,27 @@ test("prioritizes preview and chat while keeping settings and files in drawers",
   const chatBox = await page.getByRole("region", { name: "Chat" }).boundingBox();
   expect(previewBox).toBeTruthy();
   expect(chatBox).toBeTruthy();
-  expect(chatBox!.x).toBeGreaterThan(previewBox!.x);
+  expect(chatBox!.x).toBeLessThan(previewBox!.x);
+  await expect(page.getByRole("button", { name: "Projetos" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Configurações" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Arquivos" })).toBeVisible();
   await expect(page.getByText("Studio Console")).toHaveCount(0);
   await expect(page.getByText("BYOK")).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Arquivos do projeto" })).toHaveCount(0);
+
+  await page.getByLabel("Nome do projeto").fill("Projeto inicial");
+  await page.getByLabel("Nome do projeto").blur();
+  await page.getByRole("button", { name: "Projetos" }).click();
+  await expect(page.getByRole("region", { name: "Projetos" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Projetos" }).getByText("Projeto inicial")).toBeVisible();
+  await page.getByRole("button", { name: "Novo projeto" }).click();
+  await expect(page.getByLabel("Nome do projeto")).toHaveValue("Untitled Project");
+  await expect(page.getByRole("region", { name: "Projetos" }).getByText("Projeto inicial")).toBeVisible();
+  await page.getByRole("button", { name: "Selecionar Projeto inicial" }).click();
+  await expect(page.getByLabel("Nome do projeto")).toHaveValue("Projeto inicial");
+  await page.getByRole("button", { name: "Excluir Untitled Project" }).click();
+  await expect(page.getByRole("region", { name: "Projetos" }).getByText("Untitled Project")).toHaveCount(0);
+  await page.getByRole("button", { name: "Fechar projetos" }).click();
 
   await page.getByLabel("Descreva a tela que você quer criar").fill("Build a notes interface");
   await page.getByRole("button", { name: /Generate/i }).click();
@@ -94,13 +109,14 @@ test("prioritizes preview and chat while keeping settings and files in drawers",
 
   await page.getByRole("button", { name: "Arquivos" }).click();
   await expect(page.getByRole("region", { name: "Arquivos do projeto" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Novo projeto" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /src\/App\.tsx/ })).toBeVisible();
   await expect(page.getByLabel("Editor de arquivo")).toContainText("Generated Notes");
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: /Export ZIP/i }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/untitled-project\.zip/i);
+  expect(download.suggestedFilename()).toMatch(/projeto-inicial\.zip/i);
 
   const downloadPath = await download.path();
   expect(downloadPath).toBeTruthy();

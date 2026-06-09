@@ -5,14 +5,15 @@ import {
   ChevronRight,
   Download,
   FileCode2,
+  FolderKanban,
   FolderOpen,
   FolderPlus,
   KeyRound,
   Loader2,
-  Plus,
   Send,
   Settings,
   Sparkles,
+  Trash2,
   UserRound,
   X,
 } from "lucide-react";
@@ -31,6 +32,7 @@ import type {
 } from "@/lib/project/types";
 import {
   createProject,
+  deleteProject,
   listProjectSummaries,
   loadActiveProjectId,
   loadProject,
@@ -45,7 +47,7 @@ const DEFAULT_MODELS: Record<ProviderId, string> = {
   anthropic: "claude-sonnet-4-5",
 };
 
-type ActiveDrawer = "settings" | "files" | null;
+type ActiveDrawer = "settings" | "files" | "projects" | null;
 
 const promptExamples = [
   "Landing page para uma cafeteria de bairro",
@@ -141,6 +143,32 @@ export function Workspace() {
     setSelectedPath("src/App.tsx");
     saveActiveProjectId(nextProject.id);
     await refreshSummaries();
+  }
+
+  async function handleDeleteProject(projectId: string) {
+    if (!project) return;
+
+    await deleteProject(projectId);
+    const nextSummaries = await listProjectSummaries();
+
+    if (projectId !== project.id) {
+      setSummaries(nextSummaries);
+      return;
+    }
+
+    let nextProject: Project | undefined;
+    if (nextSummaries[0]) {
+      nextProject = await loadProject(nextSummaries[0].id);
+    }
+
+    if (!nextProject) {
+      nextProject = await saveProject(createProject());
+    }
+
+    setProject(nextProject);
+    setSelectedPath(nextProject.files["src/App.tsx"] ? "src/App.tsx" : Object.keys(nextProject.files)[0]);
+    saveActiveProjectId(nextProject.id);
+    setSummaries(await listProjectSummaries());
   }
 
   async function handleSelectProject(projectId: string) {
@@ -297,9 +325,9 @@ export function Workspace() {
         </div>
 
         <nav className="topbar-actions" aria-label="Acoes do projeto">
-          <button className="quiet-command" type="button" onClick={() => void handleNewProject()}>
-            <Plus size={16} aria-hidden="true" />
-            <span>Novo</span>
+          <button className="quiet-command" type="button" onClick={() => setActiveDrawer("projects")}>
+            <FolderKanban size={16} aria-hidden="true" />
+            <span>Projetos</span>
           </button>
           <button className="quiet-command" type="button" onClick={() => setActiveDrawer("settings")}>
             <Settings size={16} aria-hidden="true" />
@@ -463,6 +491,54 @@ export function Workspace() {
                 </div>
               </div>
             </section>
+          ) : activeDrawer === "projects" ? (
+            <section className="side-drawer projects-drawer" aria-label="Projetos">
+              <div className="drawer-header">
+                <div>
+                  <p>Orquestrar projetos</p>
+                  <h2>Projetos</h2>
+                </div>
+                <button
+                  className="icon-only"
+                  type="button"
+                  aria-label="Fechar projetos"
+                  onClick={() => setActiveDrawer(null)}
+                >
+                  <X size={17} aria-hidden="true" />
+                </button>
+              </div>
+
+              <div className="drawer-actions">
+                <button className="secondary-command" type="button" onClick={() => void handleNewProject()}>
+                  <FolderPlus size={17} aria-hidden="true" />
+                  <span>Novo projeto</span>
+                </button>
+              </div>
+
+              <div className="project-picker" aria-label="Projetos salvos">
+                {summaries.map((summary) => (
+                  <div key={summary.id} className={`project-item ${summary.id === project.id ? "is-active" : ""}`}>
+                    <button
+                      className="project-select"
+                      type="button"
+                      aria-label={`Selecionar ${summary.name}`}
+                      onClick={() => void handleSelectProject(summary.id)}
+                    >
+                      <span>{summary.name}</span>
+                      <small>{summary.messageCount} conversas</small>
+                    </button>
+                    <button
+                      className="project-delete"
+                      type="button"
+                      aria-label={`Excluir ${summary.name}`}
+                      onClick={() => void handleDeleteProject(summary.id)}
+                    >
+                      <Trash2 size={16} aria-hidden="true" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
           ) : (
             <section className="side-drawer files-drawer" aria-label="Arquivos do projeto">
               <div className="drawer-header">
@@ -481,31 +557,11 @@ export function Workspace() {
               </div>
 
               <div className="drawer-actions">
-                <button className="secondary-command" type="button" onClick={() => void handleNewProject()}>
-                  <FolderPlus size={17} aria-hidden="true" />
-                  <span>Novo projeto</span>
-                </button>
                 <button className="secondary-command" type="button" onClick={() => void handleExport()}>
                   <Download size={17} aria-hidden="true" />
                   <span>Export ZIP</span>
                 </button>
               </div>
-
-              {summaries.length > 0 ? (
-                <div className="project-picker" aria-label="Projetos salvos">
-                  {summaries.map((summary) => (
-                    <button
-                      key={summary.id}
-                      className={summary.id === project.id ? "is-active" : ""}
-                      type="button"
-                      onClick={() => void handleSelectProject(summary.id)}
-                    >
-                      <span>{summary.name}</span>
-                      <small>{summary.messageCount} conversas</small>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
 
               <div className="file-grid">
                 <nav className="file-tree" aria-label="Arquivos">

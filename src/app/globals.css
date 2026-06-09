@@ -210,7 +210,8 @@ button:disabled {
 .primary-command,
 .segmented button,
 .example-list button,
-.project-picker button,
+.project-select,
+.project-delete,
 .file-tree button {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -228,7 +229,8 @@ button:disabled {
 .icon-only:hover,
 .segmented button:hover,
 .example-list button:hover,
-.project-picker button:hover,
+.project-select:hover,
+.project-delete:hover,
 .file-tree button:hover {
   border-color: var(--line-strong);
   background: var(--panel-soft);
@@ -269,11 +271,11 @@ button:disabled {
 }
 
 .preview-region {
-  grid-column: 1;
+  grid-column: 2;
 }
 
 .chat-region {
-  grid-column: 2;
+  grid-column: 1;
 }
 
 .region-bar {
@@ -591,6 +593,10 @@ button:disabled {
   width: min(760px, calc(100vw - 24px));
 }
 
+.projects-drawer {
+  width: min(520px, calc(100vw - 24px));
+}
+
 .drawer-header {
   display: flex;
   align-items: flex-start;
@@ -646,7 +652,7 @@ button:disabled {
 }
 
 .segmented button.is-selected,
-.project-picker button.is-active,
+.project-item.is-active,
 .file-tree button.is-active {
   border-color: rgba(31, 122, 98, 0.4);
   background: var(--accent-soft);
@@ -669,16 +675,39 @@ button:disabled {
 
 .project-picker {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 8px;
 }
 
-.project-picker button {
+.project-item {
   display: grid;
-  gap: 3px;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 7px;
+}
+
+.project-select {
+  display: grid;
+  gap: 4px;
   min-height: 58px;
   padding: 9px 10px;
   text-align: left;
+  border-color: transparent;
+  background: transparent;
+}
+
+.project-delete {
+  min-height: 42px;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  color: var(--danger);
+}
+
+.project-delete svg {
+  color: currentColor;
 }
 
 .project-picker span,
