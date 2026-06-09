@@ -58,6 +58,9 @@ test("prioritizes preview and chat while keeping settings and files in drawers",
   expect(previewBox).toBeTruthy();
   expect(chatBox).toBeTruthy();
   expect(chatBox!.x).toBeLessThan(previewBox!.x);
+  expect(chatBox!.width).toBeGreaterThanOrEqual(400);
+  expect(chatBox!.width).toBeLessThanOrEqual(440);
+  expect(previewBox!.width).toBeGreaterThan(chatBox!.width);
   await expect(page.getByRole("button", { name: "Projetos" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Configurações" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Arquivos" })).toBeVisible();
@@ -68,16 +71,28 @@ test("prioritizes preview and chat while keeping settings and files in drawers",
   await page.getByLabel("Nome do projeto").fill("Projeto inicial");
   await page.getByLabel("Nome do projeto").blur();
   await page.getByRole("button", { name: "Projetos" }).click();
-  await expect(page.getByRole("region", { name: "Projetos" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Projetos" }).getByText("Projeto inicial")).toBeVisible();
+  const projectsDrawer = page.getByRole("region", { name: "Projetos" });
+  await expect(projectsDrawer).toBeVisible();
+  await expect(projectsDrawer.getByText("Projeto inicial")).toBeVisible();
+  await expect(projectsDrawer.getByText("Ativo")).toBeVisible();
   await page.getByRole("button", { name: "Novo projeto" }).click();
   await expect(page.getByLabel("Nome do projeto")).toHaveValue("Untitled Project");
-  await expect(page.getByRole("region", { name: "Projetos" }).getByText("Projeto inicial")).toBeVisible();
-  await page.getByRole("button", { name: "Selecionar Projeto inicial" }).click();
+  await expect(projectsDrawer.getByText("Projeto inicial")).toBeVisible();
+  await page.getByRole("button", { name: "Abrir Projeto inicial" }).click();
   await expect(page.getByLabel("Nome do projeto")).toHaveValue("Projeto inicial");
   await page.getByRole("button", { name: "Excluir Untitled Project" }).click();
-  await expect(page.getByRole("region", { name: "Projetos" }).getByText("Untitled Project")).toHaveCount(0);
+  await expect(projectsDrawer.getByText("Confirmar exclusão?")).toBeVisible();
+  await expect(projectsDrawer.getByText("Untitled Project")).toBeVisible();
+  await page.getByRole("button", { name: "Confirmar exclusão de Untitled Project" }).click();
+  await expect(projectsDrawer.getByText("Untitled Project")).toHaveCount(0);
+  await page.getByRole("button", { name: "Excluir Projeto inicial" }).click();
+  await expect(projectsDrawer.getByText("Confirmar exclusão?")).toBeVisible();
+  await page.getByRole("button", { name: "Confirmar exclusão de Projeto inicial" }).click();
+  await expect(page.getByLabel("Nome do projeto")).toHaveValue("Untitled Project");
+  await expect(projectsDrawer.getByText("Ativo")).toBeVisible();
   await page.getByRole("button", { name: "Fechar projetos" }).click();
+  await page.getByLabel("Nome do projeto").fill("Projeto inicial");
+  await page.getByLabel("Nome do projeto").blur();
 
   await page.getByLabel("Descreva a tela que você quer criar").fill("Build a notes interface");
   await page.getByRole("button", { name: /Generate/i }).click();
@@ -108,10 +123,17 @@ test("prioritizes preview and chat while keeping settings and files in drawers",
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Arquivos" }).click();
-  await expect(page.getByRole("region", { name: "Arquivos do projeto" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Novo projeto" })).toHaveCount(0);
+  const filesDrawer = page.getByRole("region", { name: "Arquivos do projeto" });
+  await expect(filesDrawer).toBeVisible();
+  await expect(filesDrawer.getByRole("button", { name: "Novo projeto" })).toHaveCount(0);
+  await expect(filesDrawer.getByRole("button", { name: /Abrir / })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /src\/App\.tsx/ })).toBeVisible();
   await expect(page.getByLabel("Editor de arquivo")).toContainText("Generated Notes");
+  const fileTreeBox = await page.getByRole("navigation", { name: "Arquivos" }).boundingBox();
+  const editorBox = await page.getByLabel("Editor de arquivo").boundingBox();
+  expect(fileTreeBox).toBeTruthy();
+  expect(editorBox).toBeTruthy();
+  expect(editorBox!.width).toBeGreaterThan(fileTreeBox!.width);
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: /Export ZIP/i }).click();

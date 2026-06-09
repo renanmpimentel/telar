@@ -85,7 +85,7 @@ button:disabled {
 .app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: minmax(520px, 1fr) minmax(340px, 420px);
+  grid-template-columns: 420px minmax(0, 1fr);
   grid-template-rows: 74px minmax(0, 1fr);
   gap: 12px;
   padding: 12px;
@@ -95,7 +95,7 @@ button:disabled {
   grid-column: 1 / -1;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(210px, 300px) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(170px, 240px) auto;
   align-items: center;
   gap: 14px;
   border: 1px solid var(--line);
@@ -185,9 +185,12 @@ button:disabled {
 }
 
 .project-name-input {
-  min-height: 40px;
-  padding: 8px 11px;
-  font-weight: 680;
+  min-height: 36px;
+  padding: 7px 10px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 620;
 }
 
 .project-name-input:focus,
@@ -210,8 +213,10 @@ button:disabled {
 .primary-command,
 .segmented button,
 .example-list button,
-.project-select,
+.project-open,
 .project-delete,
+.project-confirm-cancel,
+.project-confirm-delete,
 .file-tree button {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -229,8 +234,10 @@ button:disabled {
 .icon-only:hover,
 .segmented button:hover,
 .example-list button:hover,
-.project-select:hover,
+.project-open:hover,
 .project-delete:hover,
+.project-confirm-cancel:hover,
+.project-confirm-delete:hover,
 .file-tree button:hover {
   border-color: var(--line-strong);
   background: var(--panel-soft);
@@ -590,7 +597,7 @@ button:disabled {
 }
 
 .files-drawer {
-  width: min(760px, calc(100vw - 24px));
+  width: min(900px, calc(100vw - 24px));
 }
 
 .projects-drawer {
@@ -665,12 +672,22 @@ button:disabled {
   gap: 8px;
 }
 
+.project-drawer-actions {
+  justify-content: stretch;
+}
+
 .secondary-command {
   min-height: 40px;
   justify-content: center;
   gap: 8px;
   padding: 0 12px;
   font-weight: 720;
+}
+
+.drawer-primary-command {
+  min-height: 40px;
+  flex: 1;
+  box-shadow: none;
 }
 
 .project-picker {
@@ -680,27 +697,82 @@ button:disabled {
 
 .project-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 42px;
   gap: 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #ffffff;
-  padding: 7px;
+  padding: 8px;
 }
 
-.project-select {
+.project-item.is-active {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.project-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.project-meta {
+  min-width: 0;
   display: grid;
   gap: 4px;
-  min-height: 58px;
-  padding: 9px 10px;
-  text-align: left;
-  border-color: transparent;
-  background: transparent;
+}
+
+.project-title-line,
+.active-project-pill,
+.project-row-actions,
+.project-open,
+.project-confirm,
+.project-confirm-cancel,
+.project-confirm-delete {
+  display: inline-flex;
+  align-items: center;
+}
+
+.project-title-line {
+  min-width: 0;
+  gap: 8px;
+}
+
+.active-project-pill {
+  flex: 0 0 auto;
+  gap: 4px;
+  border: 1px solid rgba(31, 122, 98, 0.25);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  padding: 2px 7px;
+  font-size: 0.7rem;
+  font-weight: 760;
+}
+
+.project-row-actions {
+  gap: 6px;
+}
+
+.project-open {
+  min-height: 34px;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.project-open:disabled {
+  border-color: rgba(31, 122, 98, 0.28);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  opacity: 1;
 }
 
 .project-delete {
-  min-height: 42px;
-  align-self: center;
+  width: 36px;
+  min-height: 34px;
   display: grid;
   place-items: center;
   color: var(--danger);
@@ -710,7 +782,40 @@ button:disabled {
   color: currentColor;
 }
 
-.project-picker span,
+.project-confirm {
+  min-width: 0;
+  gap: 7px;
+  justify-content: flex-end;
+  border: 1px solid rgba(180, 35, 24, 0.18);
+  border-radius: 8px;
+  background: var(--danger-soft);
+  padding: 7px;
+}
+
+.project-confirm > span {
+  margin-right: auto;
+  color: var(--danger);
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.project-confirm-cancel,
+.project-confirm-delete {
+  min-height: 30px;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 8px;
+  font-size: 0.76rem;
+  font-weight: 760;
+}
+
+.project-confirm-delete {
+  border-color: rgba(180, 35, 24, 0.28);
+  background: #ffffff;
+  color: var(--danger);
+}
+
+.project-name,
 .project-picker small,
 .file-tree span,
 .editor-wrap > span {
@@ -719,7 +824,7 @@ button:disabled {
   white-space: nowrap;
 }
 
-.project-picker span {
+.project-name {
   color: var(--ink);
   font-weight: 720;
 }
@@ -733,8 +838,8 @@ button:disabled {
   min-height: 0;
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(190px, 240px) minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: minmax(150px, 190px) minmax(0, 1fr);
+  gap: 12px;
 }
 
 .file-tree {
@@ -812,7 +917,7 @@ button:disabled {
 @media (max-width: 1180px) {
   .app-shell {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(520px, 1fr) minmax(460px, auto);
+    grid-template-rows: auto minmax(460px, auto) minmax(560px, 1fr);
   }
 
   .preview-region,
@@ -857,6 +962,21 @@ button:disabled {
 
   .quiet-command,
   .secondary-command {
+    flex: 1;
+  }
+
+  .project-row {
+    grid-template-columns: 1fr;
+  }
+
+  .project-row-actions,
+  .project-confirm {
+    justify-content: stretch;
+  }
+
+  .project-open,
+  .project-confirm-cancel,
+  .project-confirm-delete {
     flex: 1;
   }
 

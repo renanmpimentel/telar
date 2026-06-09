@@ -2,6 +2,7 @@
 
 import {
   Bot,
+  CheckCircle2,
   ChevronRight,
   Download,
   FileCode2,
@@ -67,6 +68,7 @@ export function Workspace() {
   const [notice, setNotice] = useState<string | null>(null);
   const [activeDrawer, setActiveDrawer] = useState<ActiveDrawer>(null);
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const apiKeyInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -97,7 +99,7 @@ export function Workspace() {
 
       if (cancelled) return;
       setProject(activeProject);
-      setSelectedPath(activeProject.files["src/App.tsx"] ? "src/App.tsx" : Object.keys(activeProject.files)[0]);
+      setSelectedPath(getPreferredSelectedPath(activeProject, "src/App.tsx"));
       saveActiveProjectId(activeProject.id);
       setSummaries(await listProjectSummaries());
     }
@@ -129,6 +131,18 @@ export function Workspace() {
     setSummaries(await listProjectSummaries());
   }
 
+  function openDrawer(drawer: Exclude<ActiveDrawer, null>) {
+    setActiveDrawer(drawer);
+    if (drawer !== "projects") {
+      setConfirmingDeleteId(null);
+    }
+  }
+
+  function closeDrawer() {
+    setActiveDrawer(null);
+    setConfirmingDeleteId(null);
+  }
+
   async function persist(nextProject: Project) {
     const saved = await saveProject(nextProject);
     setProject(saved);
@@ -142,6 +156,7 @@ export function Workspace() {
     setProject(nextProject);
     setSelectedPath("src/App.tsx");
     saveActiveProjectId(nextProject.id);
+    setConfirmingDeleteId(null);
     await refreshSummaries();
   }
 
@@ -150,6 +165,7 @@ export function Workspace() {
 
     await deleteProject(projectId);
     const nextSummaries = await listProjectSummaries();
+    setConfirmingDeleteId(null);
 
     if (projectId !== project.id) {
       setSummaries(nextSummaries);
@@ -166,7 +182,7 @@ export function Workspace() {
     }
 
     setProject(nextProject);
-    setSelectedPath(nextProject.files["src/App.tsx"] ? "src/App.tsx" : Object.keys(nextProject.files)[0]);
+    setSelectedPath(getPreferredSelectedPath(nextProject, "src/App.tsx"));
     saveActiveProjectId(nextProject.id);
     setSummaries(await listProjectSummaries());
   }
@@ -175,8 +191,9 @@ export function Workspace() {
     const nextProject = await loadProject(projectId);
     if (!nextProject) return;
     setProject(nextProject);
-    setSelectedPath(nextProject.files[selectedPath] ? selectedPath : "src/App.tsx");
+    setSelectedPath(getPreferredSelectedPath(nextProject, selectedPath));
     saveActiveProjectId(nextProject.id);
+    setConfirmingDeleteId(null);
   }
 
   function handleProviderChange(nextProvider: ProviderId) {
@@ -205,7 +222,7 @@ export function Workspace() {
     if (!prompt) return;
 
     if (!apiKey.trim()) {
-      setActiveDrawer("settings");
+      openDrawer("settings");
       setSettingsNotice("Adicione sua chave de API para criar a tela.");
       setNotice(null);
       return;
@@ -325,22 +342,20 @@ export function Workspace() {
         </div>
 
         <nav className="topbar-actions" aria-label="Acoes do projeto">
-          <button className="quiet-command" type="button" onClick={() => setActiveDrawer("projects")}>
+          <button className="quiet-command" type="button" onClick={() => openDrawer("projects")}>
             <FolderKanban size={16} aria-hidden="true" />
             <span>Projetos</span>
           </button>
-          <button className="quiet-command" type="button" onClick={() => setActiveDrawer("settings")}>
+          <button className="quiet-command" type="button" onClick={() => openDrawer("settings")}>
             <Settings size={16} aria-hidden="true" />
             <span>Configurações</span>
           </button>
-          <button className="quiet-command" type="button" onClick={() => setActiveDrawer("files")}>
+          <button className="quiet-command" type="button" onClick={() => openDrawer("files")}>
             <FolderOpen size={16} aria-hidden="true" />
             <span>Arquivos</span>
           </button>
         </nav>
       </header>
-
-      <PreviewPane files={project.files} />
 
       <section className="workspace-region chat-region" aria-label="Chat">
         <div className="region-bar chat-bar">
@@ -405,13 +420,15 @@ export function Workspace() {
         </form>
       </section>
 
+      <PreviewPane files={project.files} />
+
       {activeDrawer ? (
         <>
           <button
             className="drawer-backdrop"
             type="button"
             aria-label="Fechar drawer"
-            onClick={() => setActiveDrawer(null)}
+            onClick={closeDrawer}
           />
           {activeDrawer === "settings" ? (
             <section className="side-drawer" aria-label="Configurações">
@@ -424,7 +441,7 @@ export function Workspace() {
                   className="icon-only"
                   type="button"
                   aria-label="Fechar configurações"
-                  onClick={() => setActiveDrawer(null)}
+                  onClick={closeDrawer}
                 >
                   <X size={17} aria-hidden="true" />
                 </button>
@@ -495,62 +512,111 @@ export function Workspace() {
             <section className="side-drawer projects-drawer" aria-label="Projetos">
               <div className="drawer-header">
                 <div>
-                  <p>Orquestrar projetos</p>
+                  <p>Gerenciar projetos</p>
                   <h2>Projetos</h2>
                 </div>
                 <button
                   className="icon-only"
                   type="button"
                   aria-label="Fechar projetos"
-                  onClick={() => setActiveDrawer(null)}
+                  onClick={closeDrawer}
                 >
                   <X size={17} aria-hidden="true" />
                 </button>
               </div>
 
-              <div className="drawer-actions">
-                <button className="secondary-command" type="button" onClick={() => void handleNewProject()}>
+              <div className="drawer-actions project-drawer-actions">
+                <button className="primary-command drawer-primary-command" type="button" onClick={() => void handleNewProject()}>
                   <FolderPlus size={17} aria-hidden="true" />
                   <span>Novo projeto</span>
                 </button>
               </div>
 
               <div className="project-picker" aria-label="Projetos salvos">
-                {summaries.map((summary) => (
-                  <div key={summary.id} className={`project-item ${summary.id === project.id ? "is-active" : ""}`}>
-                    <button
-                      className="project-select"
-                      type="button"
-                      aria-label={`Selecionar ${summary.name}`}
-                      onClick={() => void handleSelectProject(summary.id)}
-                    >
-                      <span>{summary.name}</span>
-                      <small>{summary.messageCount} conversas</small>
-                    </button>
-                    <button
-                      className="project-delete"
-                      type="button"
-                      aria-label={`Excluir ${summary.name}`}
-                      onClick={() => void handleDeleteProject(summary.id)}
-                    >
-                      <Trash2 size={16} aria-hidden="true" />
-                    </button>
-                  </div>
-                ))}
+                {summaries.map((summary) => {
+                  const isActive = summary.id === project.id;
+                  const isConfirming = confirmingDeleteId === summary.id;
+                  const conversationLabel =
+                    summary.messageCount === 1 ? "1 conversa" : `${summary.messageCount} conversas`;
+
+                  return (
+                    <article key={summary.id} className={`project-item ${isActive ? "is-active" : ""}`}>
+                      <div className="project-row">
+                        <div className="project-meta">
+                          <div className="project-title-line">
+                            <span className="project-name">{summary.name}</span>
+                            {isActive ? (
+                              <span className="active-project-pill">
+                                <CheckCircle2 size={13} aria-hidden="true" />
+                                <span>Ativo</span>
+                              </span>
+                            ) : null}
+                          </div>
+                          <small>{conversationLabel}</small>
+                        </div>
+
+                        <div className="project-row-actions">
+                          <button
+                            className="project-open"
+                            type="button"
+                            aria-label={`Abrir ${summary.name}`}
+                            disabled={isActive}
+                            onClick={() => void handleSelectProject(summary.id)}
+                          >
+                            <FolderOpen size={15} aria-hidden="true" />
+                            <span>{isActive ? "Aberto" : "Abrir"}</span>
+                          </button>
+                          <button
+                            className="project-delete"
+                            type="button"
+                            aria-label={`Excluir ${summary.name}`}
+                            onClick={() => setConfirmingDeleteId(summary.id)}
+                          >
+                            <Trash2 size={15} aria-hidden="true" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {isConfirming ? (
+                        <div className="project-confirm" role="group" aria-label={`Confirmar exclusão de ${summary.name}`}>
+                          <span>Confirmar exclusão?</span>
+                          <button
+                            className="project-confirm-cancel"
+                            type="button"
+                            aria-label={`Cancelar exclusão de ${summary.name}`}
+                            onClick={() => setConfirmingDeleteId(null)}
+                          >
+                            <X size={14} aria-hidden="true" />
+                            <span>Cancelar</span>
+                          </button>
+                          <button
+                            className="project-confirm-delete"
+                            type="button"
+                            aria-label={`Confirmar exclusão de ${summary.name}`}
+                            onClick={() => void handleDeleteProject(summary.id)}
+                          >
+                            <Trash2 size={14} aria-hidden="true" />
+                            <span>Excluir</span>
+                          </button>
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
               </div>
             </section>
           ) : (
             <section className="side-drawer files-drawer" aria-label="Arquivos do projeto">
               <div className="drawer-header">
                 <div>
-                  <p>Ver arquivos do projeto</p>
+                  <p>Exportar e editar</p>
                   <h2>Arquivos do projeto</h2>
                 </div>
                 <button
                   className="icon-only"
                   type="button"
                   aria-label="Fechar arquivos"
-                  onClick={() => setActiveDrawer(null)}
+                  onClick={closeDrawer}
                 >
                   <X size={17} aria-hidden="true" />
                 </button>
@@ -608,4 +674,10 @@ function createMessage(role: ChatMessage["role"], content: string, error = false
 function formatAssistantMessage(change: GeneratedChange): string {
   const notes = [...change.notes, ...change.errors].filter(Boolean);
   return notes.length > 0 ? `${change.summary}\n${notes.join("\n")}` : change.summary;
+}
+
+function getPreferredSelectedPath(project: Project, preferredPath: string): string {
+  if (Object.hasOwn(project.files, preferredPath)) return preferredPath;
+  if (Object.hasOwn(project.files, "src/App.tsx")) return "src/App.tsx";
+  return Object.keys(project.files).sort((a, b) => a.localeCompare(b))[0] ?? "";
 }
