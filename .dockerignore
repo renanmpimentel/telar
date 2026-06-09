@@ -1,0 +1,14 @@
+.next
+node_modules
+playwright-report
+test-results
+coverage
+dist
+tsconfig.tsbuildinfo
+*.log
+.env
+.env*.local
+.git
+.gitignore
+Dockerfile
+docker-compose.yml

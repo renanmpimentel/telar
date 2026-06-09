@@ -1,0 +1,12 @@
+services:
+  figma-fake:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: figma-fake:local
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+    restart: unless-stopped
