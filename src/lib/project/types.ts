@@ -1,8 +1,12 @@
+import type { GenerationSkill } from "@/lib/project/generation-skill";
+
 export type ProviderId = "openai" | "anthropic";
 
 export type ProjectFileMap = Record<string, string>;
 
 export type MessageRole = "user" | "assistant";
+
+export type ProjectReferenceKind = "text" | "binary";
 
 export interface ChatMessage {
   id: string;
@@ -23,6 +27,17 @@ export interface GeneratedChange {
   errors: string[];
 }
 
+export interface ProjectReference {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  kind: ProjectReferenceKind;
+  projectPath: string;
+  createdAt: string;
+  dataBase64?: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -30,6 +45,8 @@ export interface Project {
   updatedAt: string;
   files: ProjectFileMap;
   messages: ChatMessage[];
+  references: ProjectReference[];
+  generationSkill: GenerationSkill;
 }
 
 export interface ProjectSummary {

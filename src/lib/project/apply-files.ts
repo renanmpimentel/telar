@@ -1,5 +1,5 @@
 import { GeneratedChangeSchema } from "@/lib/project/schema";
-import { validatePackageJson, validateProjectPath } from "@/lib/project/paths";
+import { validateGeneratedProjectPath, validatePackageJson } from "@/lib/project/paths";
 import type { GeneratedChange, ProjectFileMap } from "@/lib/project/types";
 
 export type ApplyGeneratedChangeResult =
@@ -33,7 +33,7 @@ export function applyGeneratedChange(
   const seenPaths = new Set<string>();
 
   for (const file of parsed.data.files) {
-    const pathResult = validateProjectPath(file.path);
+    const pathResult = validateGeneratedProjectPath(file.path);
     if (!pathResult.ok) {
       return { ok: false, files: currentFiles, error: pathResult.error };
     }

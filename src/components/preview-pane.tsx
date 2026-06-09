@@ -3,11 +3,12 @@
 import { AlertTriangle, Info, Loader2, MonitorPlay } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { ProjectFileMap } from "@/lib/project/types";
+import type { ProjectFileMap, ProjectReference } from "@/lib/project/types";
 import { WebContainerRuntime } from "@/lib/preview/webcontainer-runtime";
 
 interface PreviewPaneProps {
   files: ProjectFileMap;
+  references?: ProjectReference[];
 }
 
 type PreviewState =
@@ -16,12 +17,12 @@ type PreviewState =
   | { mode: "webcontainer"; status: string; url?: string; srcDoc?: undefined; error?: undefined }
   | { mode: "error"; status: string; error: string; url?: undefined; srcDoc?: undefined };
 
-export function PreviewPane({ files }: PreviewPaneProps) {
+export function PreviewPane({ files, references = [] }: PreviewPaneProps) {
   const runtimeRef = useRef<WebContainerRuntime | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [state, setState] = useState<PreviewState>({ mode: "idle", status: "Waiting" });
   const [mockMode] = useState(() => readMockMode());
-  const fileSignature = useMemo(() => stableFileSignature(files), [files]);
+  const fileSignature = useMemo(() => stableProjectSignature(files, references), [files, references]);
   const displayState: PreviewState = mockMode
     ? { mode: "mock", status: "Preview ready", srcDoc: buildMockPreviewDoc(files) }
     : state;
@@ -58,11 +59,11 @@ export function PreviewPane({ files }: PreviewPaneProps) {
       });
     }
 
-    runtimeRef.current.sync(files).catch((error: unknown) => {
+    runtimeRef.current.sync(files, references).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : "Preview failed to boot";
       setState({ mode: "error", status: "Preview error", error: message });
     });
-  }, [fileSignature, files, mockMode]);
+  }, [fileSignature, files, references, mockMode]);
 
   return (
     <section className="workspace-region preview-region" aria-label="Preview">
@@ -112,11 +113,16 @@ function readMockMode(): boolean {
   );
 }
 
-function stableFileSignature(files: ProjectFileMap): string {
-  return Object.entries(files)
+function stableProjectSignature(files: ProjectFileMap, references: ProjectReference[]): string {
+  const fileSignature = Object.entries(files)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([filePath, content]) => `${filePath}:${content.length}:${content}`)
     .join("|");
+  const referenceSignature = [...references]
+    .sort((a, b) => a.projectPath.localeCompare(b.projectPath))
+    .map((reference) => `${reference.projectPath}:${reference.size}:${reference.dataBase64 ?? ""}`)
+    .join("|");
+  return `${fileSignature}::${referenceSignature}`;
 }
 
 function buildMockPreviewDoc(files: ProjectFileMap): string {

@@ -1,5 +1,9 @@
 import { createDefaultProjectFiles } from "@/lib/project/template";
-import type { Project, ProjectSummary, ProviderPreferences } from "@/lib/project/types";
+import {
+  createDefaultGenerationSkill,
+  normalizeGenerationSkill,
+} from "@/lib/project/generation-skill";
+import type { Project, ProjectReference, ProjectSummary, ProviderPreferences } from "@/lib/project/types";
 
 const DB_NAME = "like-figma";
 const DB_VERSION = 1;
@@ -17,11 +21,13 @@ export function createProject(name = "Untitled Project"): Project {
     updatedAt: now,
     files: createDefaultProjectFiles(),
     messages: [],
+    references: [],
+    generationSkill: createDefaultGenerationSkill(),
   };
 }
 
 export async function saveProject(project: Project): Promise<Project> {
-  const nextProject = { ...project, updatedAt: new Date().toISOString() };
+  const nextProject = migrateProject({ ...project, updatedAt: new Date().toISOString() });
   const db = await openDatabase();
 
   try {
@@ -41,7 +47,7 @@ export async function loadProject(projectId: string): Promise<Project | undefine
     const result = await requestToPromise<Project | undefined>(
       db.transaction(PROJECT_STORE, "readonly").objectStore(PROJECT_STORE).get(projectId),
     );
-    return result;
+    return result ? migrateProject(result) : undefined;
   } finally {
     db.close();
   }
@@ -52,9 +58,11 @@ export async function listProjectSummaries(): Promise<ProjectSummary[]> {
   let projects: Project[];
 
   try {
-    projects = await requestToPromise<Project[]>(
-      db.transaction(PROJECT_STORE, "readonly").objectStore(PROJECT_STORE).getAll(),
-    );
+    projects = (
+      await requestToPromise<unknown[]>(
+        db.transaction(PROJECT_STORE, "readonly").objectStore(PROJECT_STORE).getAll(),
+      )
+    ).map(migrateProject);
   } finally {
     db.close();
   }
@@ -120,6 +128,21 @@ export async function clearProjectStorageForTests(): Promise<void> {
   });
 }
 
+export function migrateProject(rawProject: unknown): Project {
+  const project = rawProject as Project & { references?: unknown; generationSkill?: unknown };
+  const references = Array.isArray(project.references)
+    ? project.references.filter(isProjectReference)
+    : [];
+
+  return {
+    ...project,
+    files: project.files ?? createDefaultProjectFiles(),
+    messages: Array.isArray(project.messages) ? project.messages : [],
+    references,
+    generationSkill: normalizeGenerationSkill(project.generationSkill),
+  };
+}
+
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -148,4 +171,23 @@ function createId(): string {
     return globalThis.crypto.randomUUID();
   }
   return `project-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function isProjectReference(value: unknown): value is ProjectReference {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const reference = value as Partial<ProjectReference>;
+  const hasBaseFields =
+    typeof reference.id === "string" &&
+    typeof reference.name === "string" &&
+    typeof reference.mimeType === "string" &&
+    typeof reference.size === "number" &&
+    typeof reference.projectPath === "string" &&
+    typeof reference.createdAt === "string" &&
+    (reference.kind === "text" || reference.kind === "binary");
+
+  if (!hasBaseFields) return false;
+  if (reference.kind === "binary") {
+    return typeof reference.dataBase64 === "string";
+  }
+  return true;
 }

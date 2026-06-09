@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 test("prioritizes preview and chat while keeping settings and files in drawers", async ({ page }) => {
   let generationCount = 0;
+  const generationRequests: Array<Record<string, unknown>> = [];
 
   await page.addInitScript(() => {
     localStorage.setItem("like-figma.previewMode", "mock");
@@ -13,6 +14,7 @@ test("prioritizes preview and chat while keeping settings and files in drawers",
 
   await page.route("**/api/generate", async (route) => {
     generationCount += 1;
+    generationRequests.push(route.request().postDataJSON() as Record<string, unknown>);
 
     if (generationCount === 1) {
       await route.fulfill({
@@ -47,9 +49,33 @@ test("prioritizes preview and chat while keeping settings and files in drawers",
       body: JSON.stringify({ error: { message: "Provider unavailable" } }),
     });
   });
+  await page.route("**/api/skills/github", async (route) => {
+    const body = route.request().postDataJSON() as { url?: string };
+    if (body.url?.includes("example.com")) {
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({ error: { message: "Only public GitHub SKILL.md URLs are supported." } }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        source: "github",
+        name: "cinematic-ui",
+        sourceUrl: "https://raw.githubusercontent.com/acme/skills/main/cinematic/SKILL.md",
+        content: "Use cinematic contrast, hard shadows, and compact production controls.",
+        fetchedAt: "2026-06-09T12:00:00.000Z",
+      }),
+    });
+  });
 
   await page.goto("/");
   await expect(page).toHaveTitle("figma-fake");
+  await expect(page.locator(".brand-mark span")).toHaveText("FF");
   await expect(page.getByText("figma-fake")).toBeVisible();
   await expect(page.getByRole("region", { name: "Preview" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Chat" })).toBeVisible();
@@ -100,6 +126,13 @@ test("prioritizes preview and chat while keeping settings and files in drawers",
   await expect(page.getByRole("region", { name: "Configurações" })).toBeVisible();
   await expect(page.getByText("Adicione sua chave de API para criar a tela.")).toBeVisible();
   await expect(page.getByLabel("API key")).toBeFocused();
+  const settingsDrawer = page.getByRole("region", { name: "Configurações" });
+  await expect(settingsDrawer.getByRole("heading", { name: "Skill de geração" })).toBeVisible();
+  await expect(settingsDrawer.getByText("frontend-design")).toBeVisible();
+  await settingsDrawer.getByLabel("URL pública do SKILL.md").fill("https://github.com/acme/skills/blob/main/cinematic/SKILL.md");
+  await settingsDrawer.getByRole("button", { name: "Carregar skill" }).click();
+  await expect(settingsDrawer.getByText("cinematic-ui")).toBeVisible();
+  await expect(settingsDrawer.getByText("Skill customizada ativa.")).toBeVisible();
   await page.getByRole("button", { name: "Claude" }).click();
   await expect(page.getByLabel("Modelo")).toHaveValue("claude-sonnet-4-5");
   await page.getByRole("button", { name: "OpenAI" }).click();
@@ -113,6 +146,13 @@ test("prioritizes preview and chat while keeping settings and files in drawers",
     page.frameLocator('iframe[title="Project preview"]').locator(".mock-root p").getByText("Generated Notes"),
   ).toBeVisible();
   await expect(page.getByText("Generated notes interface")).toBeVisible();
+  expect(generationRequests[0]?.generationSkill).toEqual(
+    expect.objectContaining({
+      source: "github",
+      name: "cinematic-ui",
+      content: expect.stringContaining("cinematic contrast"),
+    }),
+  );
 
   await page.getByLabel("Descreva a tela que você quer criar").fill("Break the provider");
   await page.getByRole("button", { name: /Generate/i }).click();
@@ -121,6 +161,14 @@ test("prioritizes preview and chat while keeping settings and files in drawers",
   await expect(
     page.frameLocator('iframe[title="Project preview"]').locator(".mock-root p").getByText("Generated Notes"),
   ).toBeVisible();
+
+  await page.getByRole("button", { name: "Configurações" }).click();
+  await settingsDrawer.getByRole("button", { name: "Remover skill" }).click();
+  await expect(settingsDrawer.getByText("frontend-design")).toBeVisible();
+  await settingsDrawer.getByLabel("URL pública do SKILL.md").fill("https://example.com/not-a-skill/SKILL.md");
+  await settingsDrawer.getByRole("button", { name: "Carregar skill" }).click();
+  await expect(settingsDrawer.getByRole("alert")).toContainText("Nao consegui carregar a skill");
+  await page.getByRole("button", { name: "Fechar configurações" }).click();
 
   await page.getByRole("button", { name: "Arquivos" }).click();
   const filesDrawer = page.getByRole("region", { name: "Arquivos do projeto" });
@@ -135,6 +183,30 @@ test("prioritizes preview and chat while keeping settings and files in drawers",
   expect(editorBox).toBeTruthy();
   expect(editorBox!.width).toBeGreaterThan(fileTreeBox!.width);
 
+  await page.getByLabel("Anexar referências").setInputFiles([
+    {
+      name: "brief.md",
+      mimeType: "text/markdown",
+      buffer: Buffer.from("# Brief\nUse the uploaded reference."),
+    },
+    {
+      name: "hero.png",
+      mimeType: "image/png",
+      buffer: Buffer.from([1, 2, 3, 4]),
+    },
+  ]);
+  await expect(filesDrawer.getByRole("heading", { name: "Referências" })).toBeVisible();
+  await expect(filesDrawer.getByRole("button", { name: "Abrir referência brief.md" })).toBeVisible();
+  await expect(filesDrawer.getByRole("button", { name: "Abrir referência hero.png" })).toBeVisible();
+
+  await filesDrawer.getByRole("button", { name: "Abrir referência brief.md" }).click();
+  await expect(page.getByLabel("Editor de arquivo")).toContainText("# Brief");
+  await filesDrawer.getByRole("button", { name: "Abrir referência hero.png" }).click();
+  await expect(filesDrawer.locator(".reference-preview-heading").getByText("image/png")).toBeVisible();
+  await expect(filesDrawer.getByRole("img", { name: "hero.png" })).toBeVisible();
+  await filesDrawer.getByRole("button", { name: "Remover referência hero.png" }).click();
+  await expect(filesDrawer.getByText("hero.png")).toHaveCount(0);
+
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: /Export ZIP/i }).click();
   const download = await downloadPromise;
@@ -144,4 +216,22 @@ test("prioritizes preview and chat while keeping settings and files in drawers",
   expect(downloadPath).toBeTruthy();
   const zip = await JSZip.loadAsync(await readFile(downloadPath!));
   await expect(zip.file("src/App.tsx")?.async("string")).resolves.toContain("Generated Notes");
+  await expect(zip.file("src/references/brief.md")?.async("string")).resolves.toContain("Brief");
+  expect(zip.file("src/references/hero.png")).toBeNull();
+
+  await page.getByRole("button", { name: "Fechar arquivos" }).click();
+  await page.getByLabel("Descreva a tela que você quer criar").fill("Use the markdown reference");
+  await page.getByRole("button", { name: /Generate/i }).click();
+  await expect(page.getByRole("region", { name: "Chat" }).getByRole("alert")).toContainText("Provider unavailable");
+  expect(generationRequests.at(-1)?.references).toEqual([
+    expect.objectContaining({
+      name: "brief.md",
+      projectPath: "src/references/brief.md",
+      kind: "text",
+    }),
+  ]);
+  expect(generationRequests.at(-1)?.generationSkill).toEqual({
+    source: "builtin",
+    name: "frontend-design",
+  });
 });

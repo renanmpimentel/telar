@@ -1,9 +1,21 @@
 import { z } from "zod";
 
 import { applyGeneratedChange } from "@/lib/project/apply-files";
+import {
+  createDefaultGenerationSkill,
+  generationSkillPromptContent,
+  MAX_GENERATION_SKILL_CONTENT_BYTES,
+} from "@/lib/project/generation-skill";
 import { GENERATED_CHANGE_JSON_SCHEMA, GeneratedChangeSchema } from "@/lib/project/schema";
 import { validatePackageJson, validateProjectPath } from "@/lib/project/paths";
-import type { GeneratedChange, ProjectFileMap, ProviderId } from "@/lib/project/types";
+import {
+  isPdfReference,
+  isSupportedProviderImage,
+  ReferenceValidationError,
+  referenceToDataUrl,
+  validateProjectReferences,
+} from "@/lib/project/references";
+import type { GeneratedChange, ProjectFileMap, ProjectReference, ProviderId } from "@/lib/project/types";
 
 type FetchImpl = typeof fetch;
 
@@ -30,6 +42,33 @@ const MessageSchema = z.object({
   content: z.string().max(8000),
 });
 
+const ProjectReferenceSchema = z.object({
+  id: z.string().min(1).max(120),
+  name: z.string().min(1).max(240),
+  mimeType: z.string().min(1).max(120),
+  size: z.number().int().nonnegative(),
+  kind: z.enum(["text", "binary"]),
+  projectPath: z.string().min(1).max(240),
+  createdAt: z.string().min(1).max(80),
+  dataBase64: z.string().optional(),
+});
+
+const GenerationSkillSchema = z
+  .discriminatedUnion("source", [
+    z.object({
+      source: z.literal("builtin"),
+      name: z.literal("frontend-design"),
+    }),
+    z.object({
+      source: z.literal("github"),
+      name: z.string().min(1).max(120),
+      sourceUrl: z.string().url().max(1000),
+      content: z.string().min(1).max(MAX_GENERATION_SKILL_CONTENT_BYTES),
+      fetchedAt: z.string().min(1).max(80),
+    }),
+  ])
+  .default(createDefaultGenerationSkill);
+
 const GenerateRequestSchema = z.object({
   provider: z.enum(["openai", "anthropic"]),
   apiKey: z.string().min(1),
@@ -37,9 +76,31 @@ const GenerateRequestSchema = z.object({
   prompt: z.string().min(1).max(12000),
   messages: z.array(MessageSchema).max(12).default([]),
   files: z.record(z.string()),
+  references: z.array(ProjectReferenceSchema).max(10).default([]),
+  generationSkill: GenerationSkillSchema,
 });
 
 type GenerateRequest = z.infer<typeof GenerateRequestSchema>;
+
+type OpenAIContentBlock =
+  | { type: "input_text"; text: string }
+  | { type: "input_image"; image_url: string; detail: "auto" }
+  | { type: "input_file"; filename: string; file_data: string };
+
+type AnthropicContentBlock =
+  | { type: "text"; text: string }
+  | {
+      type: "image";
+      source: { type: "base64"; media_type: string; data: string };
+    }
+  | {
+      type: "document";
+      title: string;
+      context?: string;
+      source:
+        | { type: "text"; media_type: "text/plain"; data: string }
+        | { type: "base64"; media_type: string; data: string };
+    };
 
 export async function handleGenerateRequest(
   rawInput: unknown,
@@ -51,6 +112,7 @@ export async function handleGenerateRequest(
   }
 
   validateInputFiles(parsedInput.data.files);
+  validateReferences(parsedInput.data.references, parsedInput.data.files);
 
   const change =
     parsedInput.data.provider === "openai"
@@ -84,7 +146,7 @@ async function callOpenAI(input: GenerateRequest, fetchImpl: FetchImpl): Promise
     body: JSON.stringify({
       model: input.model,
       instructions: SYSTEM_PROMPT,
-      input: buildUserPrompt(input),
+      input: [{ role: "user", content: buildOpenAIContent(input) }],
       max_output_tokens: 7000,
       text: {
         format: {
@@ -118,7 +180,7 @@ async function callAnthropic(input: GenerateRequest, fetchImpl: FetchImpl): Prom
       model: input.model,
       max_tokens: 7000,
       system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: buildUserPrompt(input) }],
+      messages: [{ role: "user", content: buildAnthropicContent(input) }],
       tools: [
         {
           name: "propose_files",
@@ -158,17 +220,98 @@ function validateInputFiles(files: ProjectFileMap): void {
   }
 }
 
+function validateReferences(references: ProjectReference[], files: ProjectFileMap): void {
+  try {
+    validateProjectReferences(references, files);
+  } catch (error) {
+    if (error instanceof ReferenceValidationError) {
+      throw new GenerateRequestError(error.message);
+    }
+    throw error;
+  }
+}
+
+function buildOpenAIContent(input: GenerateRequest): OpenAIContentBlock[] {
+  const content: OpenAIContentBlock[] = [];
+
+  for (const reference of sortReferences(input.references)) {
+    if (reference.kind !== "binary" || !reference.dataBase64) continue;
+    const dataUrl = referenceToDataUrl(reference);
+    if (!dataUrl) continue;
+
+    if (isSupportedProviderImage(reference)) {
+      content.push({ type: "input_image", image_url: dataUrl, detail: "auto" });
+      continue;
+    }
+
+    if (isPdfReference(reference)) {
+      content.push({ type: "input_file", filename: reference.name, file_data: dataUrl });
+    }
+  }
+
+  content.push({ type: "input_text", text: buildUserPrompt(input) });
+  return content;
+}
+
+function buildAnthropicContent(input: GenerateRequest): AnthropicContentBlock[] {
+  const content: AnthropicContentBlock[] = [];
+
+  for (const reference of sortReferences(input.references)) {
+    if (reference.kind === "text") {
+      content.push({
+        type: "document",
+        title: reference.name,
+        context: `Project reference file at ${reference.projectPath}.`,
+        source: {
+          type: "text",
+          media_type: "text/plain",
+          data: input.files[reference.projectPath] ?? "",
+        },
+      });
+      continue;
+    }
+
+    if (!reference.dataBase64) continue;
+
+    if (isSupportedProviderImage(reference)) {
+      content.push({
+        type: "image",
+        source: { type: "base64", media_type: reference.mimeType, data: reference.dataBase64 },
+      });
+      continue;
+    }
+
+    if (isPdfReference(reference)) {
+      content.push({
+        type: "document",
+        title: reference.name,
+        context: `Project reference file at ${reference.projectPath}.`,
+        source: { type: "base64", media_type: reference.mimeType, data: reference.dataBase64 },
+      });
+    }
+  }
+
+  content.push({ type: "text", text: buildUserPrompt(input) });
+  return content;
+}
+
 function buildUserPrompt(input: GenerateRequest): string {
   const recentMessages = input.messages
     .slice(-8)
     .map((message) => `${message.role.toUpperCase()}: ${message.content}`)
     .join("\n\n");
   const files = Object.entries(input.files)
+    .filter(([filePath]) => !filePath.startsWith("src/references/"))
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([filePath, content]) => `--- ${filePath}\n${truncateFile(content)}`)
     .join("\n\n");
+  const references = buildReferencePrompt(input);
+  const generationSkill = buildGenerationSkillPrompt(input);
 
-  return `USER REQUEST
+  return `GENERATION SKILL
+${generationSkill}
+
+USER REQUEST
 ${input.prompt}
 
 RECENT CHAT
@@ -176,7 +319,59 @@ ${recentMessages || "(none)"}
 
 CURRENT FILES
 ${files}
+
+REFERENCE FILES
+${references}
 `;
+}
+
+function buildGenerationSkillPrompt(input: GenerateRequest): string {
+  const metadata =
+    input.generationSkill.source === "github"
+      ? `Name: ${input.generationSkill.name}\nSource URL: ${input.generationSkill.sourceUrl}\nFetched at: ${input.generationSkill.fetchedAt}`
+      : `Name: ${input.generationSkill.name}\nSource: built-in`;
+
+  return `${metadata}
+
+Instructions:
+${generationSkillPromptContent(input.generationSkill)}`;
+}
+
+function buildReferencePrompt(input: GenerateRequest): string {
+  if (input.references.length === 0) return "(none)";
+
+  return sortReferences(input.references)
+    .map((reference) => {
+      const metadata = [
+        `--- ${reference.projectPath}`,
+        `Name: ${reference.name}`,
+        `Type: ${reference.mimeType}`,
+        `Size: ${formatBytes(reference.size)}`,
+      ];
+
+      if (reference.kind === "text") {
+        return `${metadata.join("\n")}\n\n${truncateFile(input.files[reference.projectPath] ?? "")}`;
+      }
+
+      return `${metadata.join("\n")}\n${binaryReferencePromptNote(reference, input.provider)}`;
+    })
+    .join("\n\n");
+}
+
+function binaryReferencePromptNote(reference: ProjectReference, provider: ProviderId): string {
+  if (isSupportedProviderImage(reference)) {
+    return provider === "openai"
+      ? "Attached as an input_image block."
+      : "Attached as an image content block.";
+  }
+
+  if (isPdfReference(reference)) {
+    return provider === "openai"
+      ? "Attached as an input_file block."
+      : "Attached as a document content block.";
+  }
+
+  return `Metadata only; ${provider} does not receive this file type as a multimodal block.`;
 }
 
 async function readJsonResponse(response: Response): Promise<unknown> {
@@ -274,6 +469,16 @@ function truncateFile(content: string): string {
   return `${content.slice(0, limit)}\n/* truncated */`;
 }
 
+function sortReferences(references: ProjectReference[]): ProjectReference[] {
+  return [...references].sort((a, b) => a.projectPath.localeCompare(b.projectPath));
+}
+
+function formatBytes(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -285,7 +490,8 @@ Return only the structured response requested by the API. Do not include Markdow
 Rules:
 - Produce complete file contents, never patches.
 - Keep the project as Vite + React + TypeScript.
-- Use only these editable paths: package.json, index.html, vite.config.ts, tsconfig.json, and files under src/.
+- Use only these editable paths: package.json, index.html, vite.config.ts, tsconfig.json, and files under src/ except src/references/.
+- Treat files under src/references/ as user-provided reference context. Do not create, modify, or delete src/references/ files.
 - Do not create hidden files, absolute paths, parent directory paths, node_modules, public assets, or server files.
 - Do not add dependencies beyond react, react-dom, lucide-react, vite, @vitejs/plugin-react, and typescript.
 - Prefer self-contained React/CSS in src/App.tsx, src/styles.css, and optional src/components/* files.

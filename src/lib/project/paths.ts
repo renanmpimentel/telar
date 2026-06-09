@@ -21,6 +21,18 @@ const SOURCE_EXTENSIONS = new Set([
   ".tsx",
 ]);
 
+const REFERENCE_TEXT_EXTENSIONS = new Set([
+  ".css",
+  ".html",
+  ".md",
+  ".txt",
+  ".json",
+  ".csv",
+  ".xml",
+]);
+
+const REFERENCE_ROOT = "src/references/";
+
 export const APPROVED_PACKAGE_DEPENDENCIES = new Set([
   "@vitejs/plugin-react",
   "lucide-react",
@@ -59,11 +71,27 @@ export function validateProjectPath(filePath: string): PathValidationResult {
   }
 
   const extension = getExtension(filePath);
+  if (filePath.startsWith(REFERENCE_ROOT)) {
+    if (!REFERENCE_TEXT_EXTENSIONS.has(extension)) {
+      return invalidPath(filePath);
+    }
+    return { ok: true, path: filePath };
+  }
+
   if (!SOURCE_EXTENSIONS.has(extension)) {
     return invalidPath(filePath);
   }
 
   return { ok: true, path: filePath };
+}
+
+export function validateGeneratedProjectPath(filePath: string): PathValidationResult {
+  const result = validateProjectPath(filePath);
+  if (!result.ok) return result;
+  if (result.path.startsWith(REFERENCE_ROOT)) {
+    return invalidPath(filePath);
+  }
+  return result;
 }
 
 export function assertValidProjectPath(filePath: string): string {
