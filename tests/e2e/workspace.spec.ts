@@ -59,6 +59,24 @@ test("keeps the mobile workspace within the viewport width", async ({ page }) =>
   expect(overflow.documentWidth).toBeLessThanOrEqual(overflow.viewportWidth);
 });
 
+test("opens the mock preview in a new browser tab", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("like-figma.previewMode", "mock");
+    indexedDB.deleteDatabase("like-figma");
+    localStorage.removeItem("like-figma.activeProjectId");
+  });
+
+  await page.goto("/");
+  const openPreviewButton = page.getByRole("button", { name: "Abrir preview em nova aba" });
+  await expect(openPreviewButton).toBeVisible();
+
+  const popupPromise = page.waitForEvent("popup");
+  await openPreviewButton.click();
+  const popup = await popupPromise;
+  await expect(popup.locator(".mock-root").getByText("Start by asking the assistant for a UI.")).toBeVisible();
+  await popup.close();
+});
+
 test("prioritizes preview and chat while keeping settings and files in drawers", async ({ page }) => {
   let generationCount = 0;
   const generationRequests: Array<Record<string, unknown>> = [];
@@ -202,6 +220,7 @@ test("prioritizes preview and chat while keeping settings and files in drawers",
   await expect(
     page.frameLocator('iframe[title="Project preview"]').locator(".mock-root p").getByText("Generated Notes"),
   ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Abrir preview em nova aba" })).toBeEnabled();
   await expect(page.getByText("Generated notes interface")).toBeVisible();
   expect(generationRequests[0]?.generationSkill).toEqual(
     expect.objectContaining({

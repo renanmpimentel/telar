@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Info, Loader2, MonitorPlay } from "lucide-react";
+import { AlertTriangle, ExternalLink, Info, Loader2, MonitorPlay } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ProjectFileMap, ProjectReference } from "@/lib/project/types";
@@ -26,6 +26,22 @@ export function PreviewPane({ files, references = [] }: PreviewPaneProps) {
   const displayState: PreviewState = mockMode
     ? { mode: "mock", status: "Preview ready", srcDoc: buildMockPreviewDoc(files) }
     : state;
+  const canOpenPreview =
+    displayState.mode === "mock" || (displayState.mode === "webcontainer" && Boolean(displayState.url));
+
+  function handleOpenPreview() {
+    if (displayState.mode === "webcontainer" && displayState.url) {
+      window.open(displayState.url, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    if (displayState.mode === "mock") {
+      const blob = new Blob([displayState.srcDoc], { type: "text/html" });
+      const objectUrl = URL.createObjectURL(blob);
+      window.open(objectUrl, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+    }
+  }
 
   useEffect(() => {
     return () => runtimeRef.current?.dispose();
@@ -72,9 +88,21 @@ export function PreviewPane({ files, references = [] }: PreviewPaneProps) {
           <MonitorPlay size={17} aria-hidden="true" />
           <span>Preview</span>
         </div>
-        <span className="status-pill" data-testid="preview-status">
-          {displayState.status}
-        </span>
+        <div className="preview-actions">
+          <span className="status-pill" data-testid="preview-status">
+            {displayState.status}
+          </span>
+          <button
+            className="preview-open-button"
+            type="button"
+            onClick={handleOpenPreview}
+            disabled={!canOpenPreview}
+            aria-label="Abrir preview em nova aba"
+            title={canOpenPreview ? "Abrir preview em nova aba" : "Preview indisponivel para abrir em nova aba"}
+          >
+            <ExternalLink size={15} aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       <div className="preview-stage">

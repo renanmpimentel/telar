@@ -324,6 +324,7 @@ button:disabled {
 }
 
 .status-pill {
+  min-width: 0;
   max-width: 220px;
   overflow: hidden;
   border: 1px solid rgba(15, 111, 97, 0.18);
@@ -335,6 +336,36 @@ button:disabled {
   font-weight: 720;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.preview-actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-open-button {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #596273;
+  transition:
+    border-color 0.16s ease,
+    color 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.preview-open-button:hover:not(:disabled),
+.preview-open-button:focus-visible {
+  border-color: rgba(15, 111, 97, 0.32);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
 }
 
 .preview-stage {
