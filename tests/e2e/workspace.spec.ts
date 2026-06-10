@@ -2,6 +2,63 @@ import { expect, test } from "@playwright/test";
 import JSZip from "jszip";
 import { readFile } from "node:fs/promises";
 
+test("uses a calm minimal visual system for the workspace shell", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("like-figma.previewMode", "mock");
+    indexedDB.deleteDatabase("like-figma");
+    localStorage.removeItem("like-figma.activeProjectId");
+  });
+
+  await page.goto("/");
+  await expect(page.getByRole("region", { name: "Preview" })).toBeVisible();
+
+  const visualContract = await page.evaluate(() => {
+    const root = getComputedStyle(document.documentElement);
+    const body = getComputedStyle(document.body);
+    const topbar = getComputedStyle(document.querySelector<HTMLElement>(".workspace-topbar")!);
+    const previewStage = getComputedStyle(document.querySelector<HTMLElement>(".preview-stage")!);
+    const previewBox = document.querySelector<HTMLElement>(".preview-region")!.getBoundingClientRect();
+    const chatBox = document.querySelector<HTMLElement>(".chat-region")!.getBoundingClientRect();
+    const shadowToken = root.getPropertyValue("--shadow").trim();
+    const hexAlpha = shadowToken.match(/#[0-9a-f]{8}/i)?.[0]?.slice(-2);
+    const rgbaAlpha = shadowToken.match(/rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\)/i)?.[1];
+
+    return {
+      bodyBackground: body.backgroundImage,
+      panelShadowAlpha: hexAlpha ? Number.parseInt(hexAlpha, 16) / 255 : Number(rgbaAlpha ?? 1),
+      previewBackground: previewStage.backgroundImage,
+      topbarBackground: topbar.backgroundColor,
+      previewWidth: previewBox.width,
+      chatWidth: chatBox.width,
+    };
+  });
+
+  expect(visualContract.bodyBackground).not.toContain("radial-gradient");
+  expect(visualContract.previewBackground).not.toContain("radial-gradient");
+  expect(visualContract.panelShadowAlpha).toBeLessThanOrEqual(0.04);
+  expect(visualContract.topbarBackground).toBe("rgba(255, 255, 255, 0.94)");
+  expect(visualContract.previewWidth).toBeGreaterThan(visualContract.chatWidth);
+});
+
+test("keeps the mobile workspace within the viewport width", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    localStorage.setItem("like-figma.previewMode", "mock");
+    indexedDB.deleteDatabase("like-figma");
+    localStorage.removeItem("like-figma.activeProjectId");
+  });
+
+  await page.goto("/");
+  await expect(page.getByRole("region", { name: "Chat" })).toBeVisible();
+
+  const overflow = await page.evaluate(() => ({
+    documentWidth: document.documentElement.scrollWidth,
+    viewportWidth: document.documentElement.clientWidth,
+  }));
+
+  expect(overflow.documentWidth).toBeLessThanOrEqual(overflow.viewportWidth);
+});
+
 test("prioritizes preview and chat while keeping settings and files in drawers", async ({ page }) => {
   let generationCount = 0;
   const generationRequests: Array<Record<string, unknown>> = [];
