@@ -103,9 +103,11 @@ export function loadProviderPreferences(): Omit<ProviderPreferences, "apiKey"> |
 
   try {
     const parsed = JSON.parse(raw) as Omit<ProviderPreferences, "apiKey">;
-    if (parsed.provider !== "openai" && parsed.provider !== "anthropic") return undefined;
-    if (!parsed.model) return undefined;
-    return parsed;
+    const validProviders = ["openai", "anthropic", "claude-cli", "codex-cli"];
+    if (!validProviders.includes(parsed.provider)) return undefined;
+    const isCli = parsed.provider === "claude-cli" || parsed.provider === "codex-cli";
+    if (!isCli && !parsed.model) return undefined;
+    return { provider: parsed.provider, model: parsed.model ?? "" };
   } catch {
     return undefined;
   }

@@ -7,6 +7,7 @@ import {
   createProject,
   loadProject,
   listProjectSummaries,
+  loadProviderPreferences,
   migrateProject,
   saveProject,
   saveProviderPreferences,
@@ -94,5 +95,11 @@ describe("project persistence", () => {
     });
 
     expect(localStorage.getItem("like-figma.provider")).not.toContain("test-secret");
+  });
+
+  it("carrega preferências de provider CLI com modelo vazio", () => {
+    localStorage.setItem("like-figma.provider", JSON.stringify({ provider: "claude-cli", model: "" }));
+    const prefs = loadProviderPreferences();
+    expect(prefs).toEqual({ provider: "claude-cli", model: "" });
   });
 });
