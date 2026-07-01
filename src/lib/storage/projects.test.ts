@@ -102,4 +102,14 @@ describe("project persistence", () => {
     const prefs = loadProviderPreferences();
     expect(prefs).toEqual({ provider: "claude-cli", model: "" });
   });
+
+  it("rejeita openai com model vazio", () => {
+    localStorage.setItem("like-figma.provider", JSON.stringify({ provider: "openai", model: "" }));
+    expect(loadProviderPreferences()).toBeUndefined();
+  });
+
+  it("rejeita anthropic com model vazio", () => {
+    localStorage.setItem("like-figma.provider", JSON.stringify({ provider: "anthropic", model: "" }));
+    expect(loadProviderPreferences()).toBeUndefined();
+  });
 });
