@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { GenerateRequestError, ProviderRequestError } from "@/lib/ai/errors";
 import { applyGeneratedChange } from "@/lib/project/apply-files";
 import {
   createDefaultGenerationSkill,
@@ -19,23 +20,7 @@ import type { GeneratedChange, ProjectFileMap, ProjectReference, ProviderId } fr
 
 type FetchImpl = typeof fetch;
 
-export class GenerateRequestError extends Error {
-  constructor(
-    message: string,
-    public readonly status = 400,
-  ) {
-    super(message);
-  }
-}
-
-export class ProviderRequestError extends Error {
-  constructor(
-    message: string,
-    public readonly status = 502,
-  ) {
-    super(message);
-  }
-}
+export { GenerateRequestError, ProviderRequestError };
 
 const MessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
