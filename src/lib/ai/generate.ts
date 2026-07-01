@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { callCliAgent, type CliRunner } from "@/lib/ai/cli-agent";
 import { GenerateRequestError, ProviderRequestError } from "@/lib/ai/errors";
 import { applyGeneratedChange } from "@/lib/project/apply-files";
 import {
@@ -54,16 +55,34 @@ const GenerationSkillSchema = z
   ])
   .default(createDefaultGenerationSkill);
 
-const GenerateRequestSchema = z.object({
-  provider: z.enum(["openai", "anthropic"]),
-  apiKey: z.string().min(1),
-  model: z.string().min(1).max(120),
-  prompt: z.string().min(1).max(12000),
-  messages: z.array(MessageSchema).max(12).default([]),
-  files: z.record(z.string()),
-  references: z.array(ProjectReferenceSchema).max(10).default([]),
-  generationSkill: GenerationSkillSchema,
-});
+const GenerateRequestSchema = z
+  .object({
+    provider: z.enum(["openai", "anthropic", "claude-cli", "codex-cli"]),
+    apiKey: z.string().max(400).default(""),
+    model: z.string().max(120).default(""),
+    prompt: z.string().min(1).max(12000),
+    messages: z.array(MessageSchema).max(12).default([]),
+    files: z.record(z.string()),
+    references: z.array(ProjectReferenceSchema).max(10).default([]),
+    generationSkill: GenerationSkillSchema,
+  })
+  .superRefine((value, ctx) => {
+    const isHttp = value.provider === "openai" || value.provider === "anthropic";
+    if (isHttp && value.apiKey.trim().length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "apiKey is required for HTTP providers",
+        path: ["apiKey"],
+      });
+    }
+    if (isHttp && value.model.trim().length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "model is required for HTTP providers",
+        path: ["model"],
+      });
+    }
+  });
 
 type GenerateRequest = z.infer<typeof GenerateRequestSchema>;
 
@@ -90,6 +109,7 @@ type AnthropicContentBlock =
 export async function handleGenerateRequest(
   rawInput: unknown,
   fetchImpl: FetchImpl = fetch,
+  cliRunner?: CliRunner,
 ): Promise<{ change: GeneratedChange }> {
   const parsedInput = GenerateRequestSchema.safeParse(rawInput);
   if (!parsedInput.success) {
@@ -99,10 +119,7 @@ export async function handleGenerateRequest(
   validateInputFiles(parsedInput.data.files);
   validateReferences(parsedInput.data.references, parsedInput.data.files);
 
-  const change =
-    parsedInput.data.provider === "openai"
-      ? await callOpenAI(parsedInput.data, fetchImpl)
-      : await callAnthropic(parsedInput.data, fetchImpl);
+  const change = await dispatchProvider(parsedInput.data, fetchImpl, cliRunner);
 
   const parsedChange = GeneratedChangeSchema.safeParse(change);
   if (!parsedChange.success) {
@@ -119,6 +136,30 @@ export async function handleGenerateRequest(
   }
 
   return { change: applied.change };
+}
+
+async function dispatchProvider(
+  input: GenerateRequest,
+  fetchImpl: FetchImpl,
+  cliRunner?: CliRunner,
+): Promise<unknown> {
+  switch (input.provider) {
+    case "openai":
+      return callOpenAI(input, fetchImpl);
+    case "anthropic":
+      return callAnthropic(input, fetchImpl);
+    case "claude-cli":
+    case "codex-cli":
+      return callCliAgent(
+        {
+          provider: input.provider,
+          model: input.model,
+          systemPrompt: SYSTEM_PROMPT,
+          userPrompt: buildUserPrompt(input),
+        },
+        cliRunner,
+      );
+  }
 }
 
 async function callOpenAI(input: GenerateRequest, fetchImpl: FetchImpl): Promise<unknown> {
@@ -344,6 +385,10 @@ function buildReferencePrompt(input: GenerateRequest): string {
 }
 
 function binaryReferencePromptNote(reference: ProjectReference, provider: ProviderId): string {
+  if (provider === "claude-cli" || provider === "codex-cli") {
+    return "Metadata only; the CLI agent receives a text prompt and does not get this file as a block.";
+  }
+
   if (isSupportedProviderImage(reference)) {
     return provider === "openai"
       ? "Attached as an input_image block."

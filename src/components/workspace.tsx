@@ -69,6 +69,8 @@ import {
 const DEFAULT_MODELS: Record<ProviderId, string> = {
   openai: "gpt-5-mini",
   anthropic: "claude-sonnet-4-5",
+  "claude-cli": "",
+  "codex-cli": "",
 };
 
 type ActiveDrawer = "settings" | "files" | "projects" | null;
@@ -256,6 +258,14 @@ export function Workspace() {
     if (!prompt) return;
 
     if (!apiKey.trim()) {
+      openDrawer("settings");
+      setSettingsNotice("Adicione sua chave de API para criar a tela.");
+      setNotice(null);
+      return;
+    }
+
+    const isHttpProvider = provider === "openai" || provider === "anthropic";
+    if (isHttpProvider && !apiKey.trim()) {
       openDrawer("settings");
       setSettingsNotice("Adicione sua chave de API para criar a tela.");
       setNotice(null);

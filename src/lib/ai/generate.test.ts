@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { handleGenerateRequest } from "@/lib/ai/generate";
+import { GenerateRequestError, handleGenerateRequest } from "@/lib/ai/generate";
 import { createDefaultProjectFiles } from "@/lib/project/template";
 import type { ProjectReference } from "@/lib/project/types";
 
@@ -260,6 +260,40 @@ describe("handleGenerateRequest", () => {
       }),
     );
     expect(content.at(-1)).toEqual(expect.objectContaining({ type: "text" }));
+  });
+
+  it("aceita provider claude-cli sem apiKey e roteia pelo cli runner", async () => {
+    const runner = vi.fn(async () => ({
+      stdout: JSON.stringify({
+        result: JSON.stringify({
+          summary: "ok",
+          files: [{ path: "src/App.tsx", content: "export default function App() { return <main>Button</main>; }" }],
+          notes: [],
+          errors: [],
+        }),
+      }),
+      stderr: "",
+    }));
+    const result = await handleGenerateRequest(
+      {
+        provider: "claude-cli",
+        model: "",
+        prompt: "faz um botão",
+        files: { "package.json": "{}" },
+      },
+      fetch,
+      runner,
+    );
+    expect(result.change.summary).toBe("ok");
+  });
+
+  it("rejeita provider openai sem apiKey", async () => {
+    await expect(
+      handleGenerateRequest(
+        { provider: "openai", model: "gpt-5-mini", prompt: "x", files: { "package.json": "{}" } },
+        fetch,
+      ),
+    ).rejects.toBeInstanceOf(GenerateRequestError);
   });
 });
 

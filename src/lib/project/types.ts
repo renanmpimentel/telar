@@ -1,6 +1,6 @@
 import type { GenerationSkill } from "@/lib/project/generation-skill";
 
-export type ProviderId = "openai" | "anthropic";
+export type ProviderId = "openai" | "anthropic" | "claude-cli" | "codex-cli";
 
 export type ProjectFileMap = Record<string, string>;
 
