@@ -20,13 +20,21 @@ export interface CliAgentInput {
   model?: string;
   systemPrompt: string;
   userPrompt: string;
+  schemaHint: string;
 }
 
 const TIMEOUT_MS = 120_000;
 const MAX_BUFFER = 20 * 1024 * 1024;
 
 const INSTRUCTION =
-  "Return ONLY a single JSON object matching the required schema. No markdown fences, no prose.";
+  "Respond with ONLY a single JSON object that conforms EXACTLY to the JSON Schema below. " +
+  "Include every field listed in the schema's `required` array (do not omit `summary`, `notes`, or `errors`). " +
+  "Use the exact types the schema declares (arrays must be JSON arrays, not strings). " +
+  "No markdown fences, no prose, no explanation — only the JSON object.";
+
+function buildCliPrompt(input: CliAgentInput): string {
+  return `${input.systemPrompt}\n\n${INSTRUCTION}\n\nJSON Schema:\n${input.schemaHint}\n\n${input.userPrompt}`;
+}
 
 function binFor(provider: CliAgentInput["provider"]): string {
   if (provider === "claude-cli") return process.env.LIKE_FIGMA_CLAUDE_BIN ?? "claude";
@@ -48,7 +56,7 @@ function argsFor(provider: CliAgentInput["provider"], model?: string): string[] 
 export async function callCliAgent(input: CliAgentInput, runner: CliRunner = defaultCliRunner): Promise<unknown> {
   const bin = binFor(input.provider);
   const args = argsFor(input.provider, input.model);
-  const prompt = `${input.systemPrompt}\n\n${INSTRUCTION}\n\n${input.userPrompt}`;
+  const prompt = buildCliPrompt(input);
 
   const dir = await mkdtemp(join(tmpdir(), "figma-cli-"));
   let result: CliRunResult;

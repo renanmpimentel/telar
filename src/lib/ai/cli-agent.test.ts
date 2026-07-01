@@ -4,7 +4,17 @@ import { callCliAgent, isBinaryAvailable, type CliRunner } from "@/lib/ai/cli-ag
 import { ProviderRequestError } from "@/lib/ai/errors";
 
 const change = { summary: "ok", files: [], notes: [], errors: [] };
-const base = { systemPrompt: "SYS", userPrompt: "faz um card" };
+const schemaHint = JSON.stringify({ required: ["summary", "files", "notes", "errors"] });
+const base = { systemPrompt: "SYS", userPrompt: "faz um card", schemaHint };
+
+it("inclui o schema no prompt enviado ao binário", async () => {
+  const runner: CliRunner = async (_bin, _args, opts) => {
+    expect(opts.input).toContain(schemaHint);
+    expect(opts.input).toContain("summary");
+    return { stdout: JSON.stringify({ result: JSON.stringify(change) }), stderr: "" };
+  };
+  await callCliAgent({ ...base, provider: "claude-cli" }, runner);
+});
 
 it("parseia o envelope JSON do Claude", async () => {
   const runner: CliRunner = async (bin, args, opts) => {

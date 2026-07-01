@@ -156,6 +156,7 @@ async function dispatchProvider(
           model: input.model,
           systemPrompt: SYSTEM_PROMPT,
           userPrompt: buildUserPrompt(input),
+          schemaHint: JSON.stringify(GENERATED_CHANGE_JSON_SCHEMA),
         },
         cliRunner,
       );
