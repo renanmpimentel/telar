@@ -298,14 +298,23 @@ describe("handleGenerateRequest", () => {
 
   it("aceita provider codex-cli sem apiKey e roteia pelo cli runner", async () => {
     const runner = vi.fn(async () => ({
-      stdout: JSON.stringify({
-        text: JSON.stringify({
-          summary: "ok",
-          files: [{ path: "src/App.tsx", content: "export default function App() { return <main>Button</main>; }" }],
-          notes: [],
-          errors: [],
+      stdout: [
+        JSON.stringify({ type: "thread.started" }),
+        JSON.stringify({
+          type: "item.completed",
+          item: {
+            type: "agent_message",
+            text: JSON.stringify({
+              summary: "ok",
+              files: [
+                { path: "src/App.tsx", content: "export default function App() { return <main>Button</main>; }" },
+              ],
+              notes: [],
+              errors: [],
+            }),
+          },
         }),
-      }),
+      ].join("\n"),
       stderr: "",
     }));
     const result = await handleGenerateRequest(
