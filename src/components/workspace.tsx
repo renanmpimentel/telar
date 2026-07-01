@@ -102,6 +102,11 @@ export function Workspace() {
   const apiKeyInputRef = useRef<HTMLInputElement>(null);
   const referenceInputRef = useRef<HTMLInputElement>(null);
 
+  const [cliAgents, setCliAgents] = useState<{ claude: boolean; codex: boolean }>({
+    claude: false,
+    codex: false,
+  });
+
   useEffect(() => {
     let cancelled = false;
 
@@ -152,12 +157,27 @@ export function Workspace() {
     return () => window.clearTimeout(focusTimer);
   }, [activeDrawer, settingsNotice]);
 
+  useEffect(() => {
+    let active = true;
+    fetch("/api/agents")
+      .then((response) => (response.ok ? response.json() : { claude: false, codex: false }))
+      .then((data) => {
+        if (active) setCliAgents({ claude: Boolean(data.claude), codex: Boolean(data.codex) });
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const filePaths = useMemo(() => {
     return Object.keys(project?.files ?? {}).sort((a, b) => a.localeCompare(b));
   }, [project?.files]);
 
   const selectedContent = project?.files[selectedPath] ?? "";
   const selectedReference = project?.references.find((reference) => reference.projectPath === selectedPath);
+
+  const isCliProvider = provider === "claude-cli" || provider === "codex-cli";
 
   async function refreshSummaries() {
     setSummaries(await listProjectSummaries());
@@ -257,7 +277,7 @@ export function Workspace() {
     const prompt = draft.trim();
     if (!prompt) return;
 
-    if (!apiKey.trim()) {
+    if (!isCliProvider && !apiKey.trim()) {
       openDrawer("settings");
       setSettingsNotice("Adicione sua chave de API para criar a tela.");
       setNotice(null);
@@ -629,31 +649,53 @@ export function Workspace() {
                     >
                       Claude
                     </button>
+                    {cliAgents.claude ? (
+                      <button
+                        type="button"
+                        className={provider === "claude-cli" ? "is-selected" : ""}
+                        onClick={() => handleProviderChange("claude-cli")}
+                      >
+                        Claude CLI
+                      </button>
+                    ) : null}
+                    {cliAgents.codex ? (
+                      <button
+                        type="button"
+                        className={provider === "codex-cli" ? "is-selected" : ""}
+                        onClick={() => handleProviderChange("codex-cli")}
+                      >
+                        Codex CLI
+                      </button>
+                    ) : null}
                   </div>
                 </div>
 
-                <div className="settings-card">
-                  <label className="field-label" htmlFor="api-key">
-                    API key
-                  </label>
-                  <div className="key-input">
-                    <KeyRound size={16} aria-hidden="true" />
-                    <input
-                      ref={apiKeyInputRef}
-                      id="api-key"
-                      aria-label="API key"
-                      value={apiKey}
-                      onChange={(event) => setApiKey(event.target.value)}
-                      type="password"
-                      autoComplete="off"
-                      placeholder="Cole sua chave aqui"
-                    />
+                {isCliProvider ? (
+                  <p className="drawer-hint">Modo CLI: usa o binário local autenticado, sem API key.</p>
+                ) : (
+                  <div className="settings-card">
+                    <label className="field-label" htmlFor="api-key">
+                      API key
+                    </label>
+                    <div className="key-input">
+                      <KeyRound size={16} aria-hidden="true" />
+                      <input
+                        ref={apiKeyInputRef}
+                        id="api-key"
+                        aria-label="API key"
+                        value={apiKey}
+                        onChange={(event) => setApiKey(event.target.value)}
+                        type="password"
+                        autoComplete="off"
+                        placeholder="Cole sua chave aqui"
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="settings-card">
                   <label className="field-label" htmlFor="model">
-                    Modelo
+                    Modelo{isCliProvider ? " (opcional)" : ""}
                   </label>
                   <input
                     id="model"

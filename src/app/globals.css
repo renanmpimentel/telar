@@ -710,6 +710,16 @@ button:disabled {
   padding: 10px 11px;
 }
 
+.drawer-hint {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  border: 1px solid rgba(115, 121, 132, 0.16);
+  border-radius: 6px;
+  background: rgba(115, 121, 132, 0.04);
+}
+
 .drawer-stack {
   display: grid;
   gap: 13px;
