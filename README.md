@@ -21,6 +21,7 @@ IndexedDB do navegador, e a chave de API e fornecida pelo usuario em modo BYOK
 - Permite trocar a skill de geracao por projeto:
   - padrao embutido: `frontend-design`;
   - customizada: URL publica do GitHub apontando diretamente para `SKILL.md`.
+- Suporta tambem os binarios locais `claude` e `codex` como provedores (modo CLI), usando a autenticacao da propria CLI, sem API key.
 
 ## Requisitos
 
@@ -73,6 +74,17 @@ Para parar:
 ```bash
 docker compose down
 ```
+
+## Modo CLI (claude / codex)
+
+Se os binarios `claude` (Claude Code) ou `codex` (OpenAI Codex) estiverem no
+PATH da maquina que roda o Next, eles aparecem como provedores em Configuracoes.
+O modo CLI usa a autenticacao da propria ferramenta (sua assinatura), nao precisa
+de API key e o modelo e opcional. Para apontar um caminho customizado use as
+variaveis de ambiente `LIKE_FIGMA_CLAUDE_BIN` e `LIKE_FIGMA_CODEX_BIN`.
+
+Observacao: o modo CLI recebe apenas texto no prompt; referencias de imagem/PDF
+entram somente como metadado.
 
 ## Comandos uteis
 
