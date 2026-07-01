@@ -264,14 +264,6 @@ export function Workspace() {
       return;
     }
 
-    const isHttpProvider = provider === "openai" || provider === "anthropic";
-    if (isHttpProvider && !apiKey.trim()) {
-      openDrawer("settings");
-      setSettingsNotice("Adicione sua chave de API para criar a tela.");
-      setNotice(null);
-      return;
-    }
-
     setNotice(null);
     setSettingsNotice(null);
     setReferenceNotice(null);

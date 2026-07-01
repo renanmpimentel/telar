@@ -295,6 +295,40 @@ describe("handleGenerateRequest", () => {
       ),
     ).rejects.toBeInstanceOf(GenerateRequestError);
   });
+
+  it("aceita provider codex-cli sem apiKey e roteia pelo cli runner", async () => {
+    const runner = vi.fn(async () => ({
+      stdout: JSON.stringify({
+        text: JSON.stringify({
+          summary: "ok",
+          files: [{ path: "src/App.tsx", content: "export default function App() { return <main>Button</main>; }" }],
+          notes: [],
+          errors: [],
+        }),
+      }),
+      stderr: "",
+    }));
+    const result = await handleGenerateRequest(
+      {
+        provider: "codex-cli",
+        model: "",
+        prompt: "faz um botão",
+        files: { "package.json": "{}" },
+      },
+      fetch,
+      runner,
+    );
+    expect(result.change.summary).toBe("ok");
+  });
+
+  it("rejeita provider anthropic sem apiKey", async () => {
+    await expect(
+      handleGenerateRequest(
+        { provider: "anthropic", model: "claude-sonnet-4-5", prompt: "x", files: { "package.json": "{}" } },
+        fetch,
+      ),
+    ).rejects.toBeInstanceOf(GenerateRequestError);
+  });
 });
 
 function textReference(name: string, projectPath: string, size: number): ProjectReference {
