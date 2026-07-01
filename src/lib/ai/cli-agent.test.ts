@@ -58,6 +58,25 @@ it("extrai JSON mesmo com cercas markdown na saída do Claude", async () => {
   expect(out).toEqual(change);
 });
 
+it("repassa limite de uso do Codex como erro amigável", async () => {
+  const stdout = [
+    JSON.stringify({ type: "thread.started" }),
+    JSON.stringify({ type: "turn.started" }),
+    JSON.stringify({ type: "error", message: "You've hit your usage limit. Upgrade to Plus to continue." }),
+    JSON.stringify({ type: "turn.failed", error: { message: "You've hit your usage limit. Upgrade to Plus to continue." } }),
+  ].join("\n");
+  const runner: CliRunner = async () => ({ stdout, stderr: "" });
+  await expect(callCliAgent({ ...base, provider: "codex-cli" }, runner)).rejects.toThrow(/Limite de uso/i);
+});
+
+it("repassa erro do Claude quando is_error é true", async () => {
+  const runner: CliRunner = async () => ({
+    stdout: JSON.stringify({ type: "result", subtype: "error", is_error: true, result: "Usage limit reached" }),
+    stderr: "",
+  });
+  await expect(callCliAgent({ ...base, provider: "claude-cli" }, runner)).rejects.toThrow(/Limite de uso|Usage limit/i);
+});
+
 it("mapeia ENOENT para erro amigável", async () => {
   const runner: CliRunner = async () => {
     const err = new Error("spawn claude ENOENT") as Error & { code?: string };

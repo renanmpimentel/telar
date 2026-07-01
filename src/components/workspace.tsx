@@ -178,6 +178,9 @@ export function Workspace() {
   const selectedReference = project?.references.find((reference) => reference.projectPath === selectedPath);
 
   const isCliProvider = provider === "claude-cli" || provider === "codex-cli";
+  const generatingMessage = isCliProvider
+    ? `Gerando com o binário local (${provider === "claude-cli" ? "Claude" : "Codex"}). A CLI inicializa a cada pedido, então isso pode levar até ~2 min. Pode aguardar.`
+    : "Gerando a tela…";
 
   async function refreshSummaries() {
     setSummaries(await listProjectSummaries());
@@ -548,6 +551,12 @@ export function Workspace() {
               </article>
             ))
           )}
+          {isGenerating ? (
+            <article className="message assistant pending" aria-live="polite">
+              <Loader2 className="spin" size={16} aria-hidden="true" />
+              <p>{generatingMessage}</p>
+            </article>
+          ) : null}
         </div>
 
         {notice ? (

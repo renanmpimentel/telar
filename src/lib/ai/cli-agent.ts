@@ -88,12 +88,25 @@ function mapRunnerError(error: unknown, bin: string): ProviderRequestError {
   return new ProviderRequestError(`CLI ${bin} falhou: ${detail}`, 502);
 }
 
+function cliErrorMessage(bin: string, raw: string): string {
+  const msg = raw.trim();
+  if (/usage limit|rate limit|quota|too many requests/i.test(msg)) {
+    return `Limite de uso da sua conta ${bin} atingido — isso é da ferramenta, nao um erro do app. ${msg}`;
+  }
+  return `CLI ${bin} falhou: ${msg}`;
+}
+
 function extractClaudeResult(stdout: string, bin: string): string {
   let envelope: unknown;
   try {
     envelope = JSON.parse(stdout);
   } catch {
     throw new ProviderRequestError(`CLI ${bin} retornou envelope não-JSON`);
+  }
+  if (envelope && typeof envelope === "object" && (envelope as { is_error?: unknown }).is_error === true) {
+    const reason =
+      pickString(envelope, ["result"]) ?? pickString(envelope, ["subtype"]) ?? "erro nao especificado";
+    throw new ProviderRequestError(cliErrorMessage(bin, reason));
   }
   if (
     envelope &&
@@ -107,6 +120,7 @@ function extractClaudeResult(stdout: string, bin: string): string {
 
 function extractCodexText(stdout: string, bin: string): string {
   const texts: string[] = [];
+  let errorMessage: string | undefined;
   for (const line of stdout.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -116,16 +130,22 @@ function extractCodexText(stdout: string, bin: string): string {
     } catch {
       continue;
     }
-    const candidate =
-      pickString(event, ["item", "text"]) ??
-      pickString(event, ["text"]) ??
-      pickString(event, ["message"]) ??
-      pickString(event, ["item", "message"]);
+    const type = pickString(event, ["type"]);
+    if (type === "error") {
+      errorMessage = pickString(event, ["message"]) ?? errorMessage;
+      continue;
+    }
+    if (type === "turn.failed") {
+      errorMessage = pickString(event, ["error", "message"]) ?? errorMessage;
+      continue;
+    }
+    const candidate = pickString(event, ["item", "text"]) ?? pickString(event, ["item", "message"]);
     if (candidate) texts.push(candidate);
   }
   const last = texts.at(-1);
-  if (!last) throw new ProviderRequestError(`CLI ${bin} não produziu mensagem de agente`);
-  return last;
+  if (last) return last;
+  if (errorMessage) throw new ProviderRequestError(cliErrorMessage(bin, errorMessage));
+  throw new ProviderRequestError(`CLI ${bin} não produziu mensagem de agente`);
 }
 
 function pickString(value: unknown, path: string[]): string | undefined {
