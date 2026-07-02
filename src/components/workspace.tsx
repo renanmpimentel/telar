@@ -95,6 +95,7 @@ export function Workspace() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [activeDrawer, setActiveDrawer] = useState<ActiveDrawer>(null);
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
   const [skillUrl, setSkillUrl] = useState("");
   const [skillNotice, setSkillNotice] = useState<SkillNotice | null>(null);
@@ -103,6 +104,7 @@ export function Workspace() {
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const apiKeyInputRef = useRef<HTMLInputElement>(null);
   const referenceInputRef = useRef<HTMLInputElement>(null);
+  const projectMenuRef = useRef<HTMLDivElement>(null);
 
   const [cliAgents, setCliAgents] = useState<{ claude: boolean; codex: boolean }>({
     claude: false,
@@ -158,6 +160,28 @@ export function Workspace() {
 
     return () => window.clearTimeout(focusTimer);
   }, [activeDrawer, settingsNotice]);
+
+  useEffect(() => {
+    if (!projectMenuOpen) return;
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!projectMenuRef.current?.contains(event.target as Node)) {
+        setProjectMenuOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setProjectMenuOpen(false);
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [projectMenuOpen]);
 
   useEffect(() => {
     let active = true;
@@ -521,7 +545,7 @@ export function Workspace() {
           <label className="sr-only" htmlFor="project-name">
             Nome do projeto
           </label>
-          <div className="project-selector">
+          <div className="project-selector" ref={projectMenuRef}>
             <span className="project-selector-eyebrow" aria-hidden="true">
               Projeto
             </span>
@@ -532,7 +556,54 @@ export function Workspace() {
               onChange={(event) => setProject({ ...project, name: event.target.value })}
               onBlur={(event) => void handleRename(event.target.value || "Untitled Project")}
             />
-            <ChevronDown className="project-selector-chevron" size={16} aria-hidden="true" />
+            <button
+              type="button"
+              className={`project-selector-toggle ${projectMenuOpen ? "is-open" : ""}`}
+              aria-label="Trocar de projeto"
+              aria-haspopup="menu"
+              aria-expanded={projectMenuOpen}
+              onClick={() => setProjectMenuOpen((open) => !open)}
+            >
+              <ChevronDown className="project-selector-chevron" size={16} aria-hidden="true" />
+            </button>
+
+            {projectMenuOpen ? (
+              <div className="project-menu" role="menu" aria-label="Trocar de projeto">
+                <div className="project-menu-list">
+                  {summaries.map((summary) => {
+                    const isActive = summary.id === project.id;
+                    return (
+                      <button
+                        key={summary.id}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={isActive}
+                        className={`project-menu-item ${isActive ? "is-active" : ""}`}
+                        onClick={() => {
+                          setProjectMenuOpen(false);
+                          if (!isActive) void handleSelectProject(summary.id);
+                        }}
+                      >
+                        <FolderOpen size={15} aria-hidden="true" />
+                        <span className="project-menu-name">{summary.name}</span>
+                        {isActive ? <CheckCircle2 size={15} aria-hidden="true" /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  className="project-menu-new"
+                  onClick={() => {
+                    setProjectMenuOpen(false);
+                    void handleNewProject();
+                  }}
+                >
+                  <FolderPlus size={15} aria-hidden="true" />
+                  <span>Novo projeto</span>
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
 

@@ -110,6 +110,8 @@ button:disabled {
 }
 
 .workspace-topbar {
+  position: relative;
+  z-index: 30;
   grid-column: 1 / -1;
   min-width: 0;
   display: grid;
@@ -245,11 +247,116 @@ button:disabled {
   box-shadow: none;
 }
 
-.project-selector-chevron {
+.project-selector-toggle {
   grid-column: 2;
   grid-row: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: -2px -4px -2px 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
   color: var(--faint);
+  cursor: pointer;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.project-selector-toggle:hover {
+  background: var(--surface-muted, rgba(15, 23, 42, 0.05));
+  color: var(--text);
+}
+
+.project-selector-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.project-selector-chevron {
   flex: 0 0 auto;
+  transition: transform 0.16s ease;
+}
+
+.project-selector-toggle.is-open .project-selector-chevron {
+  transform: rotate(180deg);
+}
+
+.project-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+}
+
+.project-menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.project-menu-item,
+.project-menu-new {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 560;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.14s ease;
+}
+
+.project-menu-item:hover,
+.project-menu-new:hover,
+.project-menu-item:focus-visible,
+.project-menu-new:focus-visible {
+  outline: none;
+  background: var(--surface-muted, rgba(15, 23, 42, 0.05));
+}
+
+.project-menu-item.is-active {
+  color: var(--accent, #2f67c8);
+  font-weight: 680;
+}
+
+.project-menu-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-menu-item svg:last-child {
+  flex: 0 0 auto;
+  color: var(--accent, #2f67c8);
+}
+
+.project-menu-new {
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 7px 7px;
+  color: var(--muted);
+  font-weight: 620;
 }
 
 .project-name-input,
