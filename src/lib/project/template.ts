@@ -62,9 +62,49 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./styles.css";
 
+class PreviewErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div
+          role="alert"
+          style={{
+            minHeight: "100vh",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            alignItems: "flex-start",
+            justifyContent: "center",
+            padding: 24,
+            fontFamily: "ui-monospace, Menlo, monospace",
+            color: "#7f1d1d",
+            background: "#fef2f2",
+          }}
+        >
+          <strong>Erro ao renderizar a tela gerada</strong>
+          <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{this.state.error.message}</pre>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <PreviewErrorBoundary>
+      <App />
+    </PreviewErrorBoundary>
   </React.StrictMode>,
 );
 `,

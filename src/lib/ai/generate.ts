@@ -525,5 +525,6 @@ Rules:
 - Treat files under src/references/ as user-provided reference context. Do not create, modify, or delete src/references/ files.
 - Do not create hidden files, absolute paths, parent directory paths, node_modules, public assets, or server files.
 - Do not add dependencies beyond react, react-dom, lucide-react, vite, @vitejs/plugin-react, and typescript.
+- lucide-react does NOT include brand or social icons (there is no Instagram, GitHub, Twitter/X, Facebook, LinkedIn, YouTube, TikTok, WhatsApp, Discord, or similar). For brand/social marks use an inline <svg> or a text label. Only import lucide-react icons you are certain exist — a single missing icon import makes the whole preview render blank.
 - Prefer self-contained React/CSS in src/App.tsx, src/styles.css, and optional src/components/* files.
 - Preserve the existing app when the request is unclear and explain any limitation in notes or errors.`;
