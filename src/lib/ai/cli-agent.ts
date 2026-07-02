@@ -37,8 +37,10 @@ function buildCliPrompt(input: CliAgentInput): string {
 }
 
 function binFor(provider: CliAgentInput["provider"]): string {
-  if (provider === "claude-cli") return process.env.LIKE_FIGMA_CLAUDE_BIN ?? "claude";
-  return process.env.LIKE_FIGMA_CODEX_BIN ?? "codex";
+  if (provider === "claude-cli") {
+    return process.env.TELAR_CLAUDE_BIN ?? process.env.LIKE_FIGMA_CLAUDE_BIN ?? "claude";
+  }
+  return process.env.TELAR_CODEX_BIN ?? process.env.LIKE_FIGMA_CODEX_BIN ?? "codex";
 }
 
 function argsFor(provider: CliAgentInput["provider"], model?: string): string[] {
@@ -58,7 +60,7 @@ export async function callCliAgent(input: CliAgentInput, runner: CliRunner = def
   const args = argsFor(input.provider, input.model);
   const prompt = buildCliPrompt(input);
 
-  const dir = await mkdtemp(join(tmpdir(), "figma-cli-"));
+  const dir = await mkdtemp(join(tmpdir(), "telar-cli-"));
   let result: CliRunResult;
   try {
     result = await runner(bin, args, { input: prompt, cwd: dir, timeoutMs: TIMEOUT_MS });
@@ -198,7 +200,11 @@ export async function isBinaryAvailable(
   accessFn: typeof fsAccess = fsAccess,
 ): Promise<boolean> {
   const override =
-    bin === "claude" ? env.LIKE_FIGMA_CLAUDE_BIN : bin === "codex" ? env.LIKE_FIGMA_CODEX_BIN : undefined;
+    bin === "claude"
+      ? (env.TELAR_CLAUDE_BIN ?? env.LIKE_FIGMA_CLAUDE_BIN)
+      : bin === "codex"
+        ? (env.TELAR_CODEX_BIN ?? env.LIKE_FIGMA_CODEX_BIN)
+        : undefined;
   const target = override ?? bin;
 
   if (target.includes("/")) {

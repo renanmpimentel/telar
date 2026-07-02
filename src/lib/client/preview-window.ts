@@ -1,4 +1,4 @@
-export const PREVIEW_WINDOW_STORAGE_PREFIX = "like-figma.previewWindow:";
+export const PREVIEW_WINDOW_STORAGE_PREFIX = "telar.previewWindow:";
 
 const PREVIEW_WINDOW_TTL_MS = 10 * 60 * 1000;
 

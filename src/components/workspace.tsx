@@ -57,6 +57,7 @@ import type {
   ProjectVersion,
   ProviderId,
 } from "@/lib/project/types";
+import { migrateLegacyStorage } from "@/lib/storage/migrate-legacy";
 import {
   createProject,
   deleteProject,
@@ -116,6 +117,8 @@ export function Workspace() {
     let cancelled = false;
 
     async function bootWorkspace() {
+      await migrateLegacyStorage();
+
       const preferences = loadProviderPreferences();
       if (preferences) {
         setProvider(preferences.provider);

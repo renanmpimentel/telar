@@ -5,11 +5,11 @@ import {
 } from "@/lib/project/generation-skill";
 import type { Project, ProjectReference, ProjectSummary, ProviderPreferences } from "@/lib/project/types";
 
-const DB_NAME = "like-figma";
+const DB_NAME = "telar";
 const DB_VERSION = 1;
 const PROJECT_STORE = "projects";
-const PROVIDER_STORAGE_KEY = "like-figma.provider";
-const ACTIVE_PROJECT_KEY = "like-figma.activeProjectId";
+const PROVIDER_STORAGE_KEY = "telar.provider";
+const ACTIVE_PROJECT_KEY = "telar.activeProjectId";
 
 export function createProject(name = "Untitled Project"): Project {
   const now = new Date().toISOString();

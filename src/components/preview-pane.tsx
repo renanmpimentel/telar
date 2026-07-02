@@ -184,7 +184,7 @@ export function appendReloadParam(url: string, nonce: number): string {
 function readMockMode(): boolean {
   return (
     process.env.NEXT_PUBLIC_PREVIEW_MODE === "mock" ||
-    (typeof window !== "undefined" && window.localStorage.getItem("like-figma.previewMode") === "mock")
+    (typeof window !== "undefined" && window.localStorage.getItem("telar.previewMode") === "mock")
   );
 }
 

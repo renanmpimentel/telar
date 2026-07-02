@@ -5,7 +5,7 @@ export interface ModuleCache {
   save(key: string, bytes: Uint8Array): Promise<void>;
 }
 
-const DB_NAME = "like-figma-preview";
+const DB_NAME = "telar-preview";
 const DB_VERSION = 1;
 const STORE = "modules";
 

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40" fill="none">
+  <defs>
+    <linearGradient id="telar-tile" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#13897a"/>
+      <stop offset="1" stop-color="#0b544a"/>
+    </linearGradient>
+  </defs>
+  <rect x="0.5" y="0.5" width="39" height="39" rx="9.5" fill="url(#telar-tile)"/>
+  <path d="M11 13.5h18" stroke="#fff" stroke-width="3.1" stroke-linecap="round"/>
+  <path d="M20 13.5v8.5" stroke="#fff" stroke-width="3.1" stroke-linecap="round"/>
+  <path d="M20 21.4l8.4 3.5-3.4 1.1 1.9 4.1-2.4 1.1-1.9-4.1-2.6 2.2z" fill="#fff" stroke="url(#telar-tile)" stroke-width="0.6" stroke-linejoin="round"/>
+</svg>
