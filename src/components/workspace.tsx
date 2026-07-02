@@ -52,6 +52,7 @@ import type {
   Project,
   ProjectReference,
   ProjectSummary,
+  ProjectVersion,
   ProviderId,
 } from "@/lib/project/types";
 import {
@@ -262,6 +263,22 @@ export function Workspace() {
     saveProviderPreferences({ provider: nextProvider, model: nextModel });
   }
 
+  async function handleRestore(versionId: string) {
+    if (!project || isGenerating) return;
+    const version = project.versions.find((entry) => entry.id === versionId);
+    if (!version) return;
+
+    const restored: Project = {
+      ...project,
+      files: { ...version.files },
+      updatedAt: new Date().toISOString(),
+    };
+    const saved = await persist(restored);
+    setSelectedPath(getPreferredSelectedPath(saved, selectedPath));
+    const label = version.prompt.length > 60 ? `${version.prompt.slice(0, 60)}…` : version.prompt;
+    setNotice(`Versão restaurada: "${label}"`);
+  }
+
   function handleModelChange(nextModel: string) {
     setModel(nextModel);
     saveProviderPreferences({ provider, model: nextModel });
@@ -325,11 +342,24 @@ export function Workspace() {
         throw new Error(applied.error);
       }
 
-      const assistantMessage = createMessage("assistant", formatAssistantMessage(payload.change));
+      const version: ProjectVersion = {
+        id: createLocalId("ver"),
+        prompt,
+        summary: payload.change.summary,
+        createdAt: new Date().toISOString(),
+        files: applied.files,
+      };
+      const assistantMessage = createMessage(
+        "assistant",
+        formatAssistantMessage(payload.change),
+        false,
+        version.id,
+      );
       const nextProject: Project = {
         ...project,
         files: applied.files,
         messages: [...project.messages, userMessage, assistantMessage],
+        versions: [...project.versions, version],
         updatedAt: new Date().toISOString(),
       };
 
@@ -540,16 +570,38 @@ export function Workspace() {
               </div>
             </div>
           ) : (
-            project.messages.map((message) => (
-              <article key={message.id} className={`message ${message.role} ${message.error ? "error" : ""}`}>
-                {message.role === "user" ? (
-                  <UserRound size={16} aria-hidden="true" />
-                ) : (
-                  <Bot size={16} aria-hidden="true" />
-                )}
-                <p>{message.content}</p>
-              </article>
-            ))
+            project.messages.map((message) => {
+              const restorable =
+                message.role === "assistant" &&
+                !message.error &&
+                Boolean(message.versionId) &&
+                project.versions.some((entry) => entry.id === message.versionId);
+
+              return (
+                <article key={message.id} className={`message ${message.role} ${message.error ? "error" : ""}`}>
+                  {message.role === "user" ? (
+                    <UserRound size={16} aria-hidden="true" />
+                  ) : (
+                    <Bot size={16} aria-hidden="true" />
+                  )}
+                  <div className="message-body">
+                    <p>{message.content}</p>
+                    {restorable ? (
+                      <button
+                        type="button"
+                        className="restore-version"
+                        onClick={() => handleRestore(message.versionId!)}
+                        disabled={isGenerating}
+                        title="Restaurar os arquivos para esta versão"
+                      >
+                        <RotateCcw size={13} aria-hidden="true" />
+                        Restaurar esta versão
+                      </button>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            })
           )}
           {isGenerating ? (
             <article className="message assistant pending" aria-live="polite">
@@ -1048,12 +1100,22 @@ function ReferencePreview({ reference }: { reference: ProjectReference }) {
   );
 }
 
-function createMessage(role: ChatMessage["role"], content: string, error = false): ChatMessage {
+function createLocalId(prefix: string): string {
+  return globalThis.crypto?.randomUUID?.() ?? `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function createMessage(
+  role: ChatMessage["role"],
+  content: string,
+  error = false,
+  versionId?: string,
+): ChatMessage {
   return {
-    id: globalThis.crypto?.randomUUID?.() ?? `msg-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    id: createLocalId("msg"),
     role,
     content,
     error,
+    ...(versionId ? { versionId } : {}),
   };
 }
 

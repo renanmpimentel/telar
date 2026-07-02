@@ -23,6 +23,7 @@ export function createProject(name = "Untitled Project"): Project {
     messages: [],
     references: [],
     generationSkill: createDefaultGenerationSkill(),
+    versions: [],
   };
 }
 
@@ -142,6 +143,9 @@ export function migrateProject(rawProject: unknown): Project {
     messages: Array.isArray(project.messages) ? project.messages : [],
     references,
     generationSkill: normalizeGenerationSkill(project.generationSkill),
+    versions: Array.isArray((project as { versions?: unknown }).versions)
+      ? ((project as { versions: Project["versions"] }).versions)
+      : [],
   };
 }
 

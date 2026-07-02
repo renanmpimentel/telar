@@ -13,6 +13,7 @@ export interface ChatMessage {
   role: MessageRole;
   content: string;
   error?: boolean;
+  versionId?: string;
 }
 
 export interface GeneratedFile {
@@ -38,6 +39,14 @@ export interface ProjectReference {
   dataBase64?: string;
 }
 
+export interface ProjectVersion {
+  id: string;
+  prompt: string;
+  summary: string;
+  createdAt: string;
+  files: ProjectFileMap;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -47,6 +56,7 @@ export interface Project {
   messages: ChatMessage[];
   references: ProjectReference[];
   generationSkill: GenerationSkill;
+  versions: ProjectVersion[];
 }
 
 export interface ProjectSummary {

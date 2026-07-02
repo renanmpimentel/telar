@@ -19,6 +19,17 @@ describe("project persistence", () => {
     await clearProjectStorageForTests();
   });
 
+  it("migra projetos antigos sem versions para um array vazio", () => {
+    const legacy = { id: "p1", name: "Antigo", files: {}, messages: [] };
+    expect(migrateProject(legacy).versions).toEqual([]);
+  });
+
+  it("preserva versions existentes na migração", () => {
+    const version = { id: "v1", prompt: "faz um botão", summary: "ok", createdAt: "2026-07-02T00:00:00.000Z", files: {} };
+    const project = { ...createProject("Com versões"), versions: [version] };
+    expect(migrateProject(project).versions).toEqual([version]);
+  });
+
   it("stores and loads projects with messages and files", async () => {
     const project = createProject("Landing page");
     project.messages.push({ id: "m1", role: "user", content: "Make a pricing UI" });
