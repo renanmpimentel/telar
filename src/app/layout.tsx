@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "figma-fake",
+  title: "Telar",
   description: "A friendly local-first AI UI workspace with live preview.",
 };
 

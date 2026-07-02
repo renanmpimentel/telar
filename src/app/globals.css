@@ -148,18 +148,10 @@ button:disabled {
 
 .brand-mark {
   width: 34px;
-  aspect-ratio: 1;
-  display: grid;
-  place-items: center;
+  height: 34px;
   flex: 0 0 auto;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #ffffff;
-  color: var(--ink);
-  font-family: var(--mono);
-  font-size: 0.74rem;
-  font-weight: 800;
-  box-shadow: 0 5px 18px rgba(16, 24, 40, 0.04);
+  border-radius: 9px;
+  box-shadow: 0 5px 18px rgba(11, 84, 74, 0.22);
 }
 
 .brand-copy {

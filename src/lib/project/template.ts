@@ -112,7 +112,7 @@ createRoot(document.getElementById("root")!).render(
   return (
     <main className="shell">
       <section className="panel">
-        <p className="eyebrow">figma-fake</p>
+        <p className="eyebrow">Telar</p>
         <h1>Start by asking the assistant for a UI.</h1>
         <p>
           Generated React files will replace this starter screen while the Vite

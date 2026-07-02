@@ -30,6 +30,7 @@ import {
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { PreviewPane } from "@/components/preview-pane";
+import { TelarMark } from "@/components/telar-mark";
 import { handleGenerateClientError } from "@/lib/client/errors";
 import { downloadProjectZip } from "@/lib/export/zip";
 import { applyGeneratedChange } from "@/lib/project/apply-files";
@@ -532,11 +533,9 @@ export function Workspace() {
 
       <header className="workspace-topbar">
         <div className="product-lockup">
-          <div className="brand-mark" aria-hidden="true">
-            <span>FF</span>
-          </div>
+          <TelarMark className="brand-mark" />
           <div className="brand-copy">
-            <p>figma-fake</p>
+            <p>Telar</p>
             <h1>Crie telas descrevendo o que voce precisa</h1>
           </div>
         </div>

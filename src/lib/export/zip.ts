@@ -34,7 +34,7 @@ export async function downloadProjectZip(
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `${slugify(projectName || "figma-fake-project")}.zip`;
+  anchor.download = `${slugify(projectName || "telar-project")}.zip`;
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
@@ -47,5 +47,5 @@ function slugify(value: string): string {
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "")
-    .slice(0, 80) || "figma-fake-project";
+    .slice(0, 80) || "telar-project";
 }
