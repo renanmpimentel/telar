@@ -3,6 +3,7 @@
 import {
   Bot,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Download,
   File as FileIcon,
@@ -520,13 +521,19 @@ export function Workspace() {
           <label className="sr-only" htmlFor="project-name">
             Nome do projeto
           </label>
-          <input
-            id="project-name"
-            className="project-name-input"
-            value={project.name}
-            onChange={(event) => setProject({ ...project, name: event.target.value })}
-            onBlur={(event) => void handleRename(event.target.value || "Untitled Project")}
-          />
+          <div className="project-selector">
+            <span className="project-selector-eyebrow" aria-hidden="true">
+              Projeto
+            </span>
+            <input
+              id="project-name"
+              className="project-name-input"
+              value={project.name}
+              onChange={(event) => setProject({ ...project, name: event.target.value })}
+              onBlur={(event) => void handleRename(event.target.value || "Untitled Project")}
+            />
+            <ChevronDown className="project-selector-chevron" size={16} aria-hidden="true" />
+          </div>
         </div>
 
         <nav className="topbar-actions" aria-label="Acoes do projeto">
@@ -578,28 +585,13 @@ export function Workspace() {
                 project.versions.some((entry) => entry.id === message.versionId);
 
               return (
-                <article key={message.id} className={`message ${message.role} ${message.error ? "error" : ""}`}>
-                  {message.role === "user" ? (
-                    <UserRound size={16} aria-hidden="true" />
-                  ) : (
-                    <Bot size={16} aria-hidden="true" />
-                  )}
-                  <div className="message-body">
-                    <p>{message.content}</p>
-                    {restorable ? (
-                      <button
-                        type="button"
-                        className="restore-version"
-                        onClick={() => handleRestore(message.versionId!)}
-                        disabled={isGenerating}
-                        title="Restaurar os arquivos para esta versão"
-                      >
-                        <RotateCcw size={13} aria-hidden="true" />
-                        Restaurar esta versão
-                      </button>
-                    ) : null}
-                  </div>
-                </article>
+                <MessageItem
+                  key={message.id}
+                  message={message}
+                  restorable={restorable}
+                  isGenerating={isGenerating}
+                  onRestore={handleRestore}
+                />
               );
             })
           )}
@@ -657,7 +649,7 @@ export function Workspace() {
         </form>
       </section>
 
-      <PreviewPane files={project.files} references={project.references} />
+      <PreviewPane files={project.files} references={project.references} isGenerating={isGenerating} />
 
       {activeDrawer ? (
         <>
@@ -1067,6 +1059,57 @@ export function Workspace() {
         </>
       ) : null}
     </main>
+  );
+}
+
+function MessageItem({
+  message,
+  restorable,
+  isGenerating,
+  onRestore,
+}: {
+  message: ChatMessage;
+  restorable: boolean;
+  isGenerating: boolean;
+  onRestore: (versionId: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const collapsible =
+    message.role === "assistant" &&
+    !message.error &&
+    (message.content.length > 240 || message.content.split("\n").length > 4);
+
+  return (
+    <article className={`message ${message.role} ${message.error ? "error" : ""}`}>
+      <span className="message-avatar" aria-hidden="true">
+        {message.role === "user" ? <UserRound size={15} /> : <Bot size={15} />}
+      </span>
+      <div className="message-body">
+        <p className={collapsible && !expanded ? "is-clamped" : undefined}>{message.content}</p>
+        {collapsible ? (
+          <button
+            type="button"
+            className="message-toggle"
+            onClick={() => setExpanded((value) => !value)}
+            aria-expanded={expanded}
+          >
+            {expanded ? "Ver menos" : "Ver mais"}
+          </button>
+        ) : null}
+        {restorable ? (
+          <button
+            type="button"
+            className="restore-version"
+            onClick={() => onRestore(message.versionId!)}
+            disabled={isGenerating}
+            title="Restaurar os arquivos para esta versão"
+          >
+            <RotateCcw size={13} aria-hidden="true" />
+            Restaurar esta versão
+          </button>
+        ) : null}
+      </div>
+    </article>
   );
 }
 

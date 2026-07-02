@@ -10,6 +10,7 @@ import { WebContainerRuntime } from "@/lib/preview/webcontainer-runtime";
 interface PreviewPaneProps {
   files: ProjectFileMap;
   references?: ProjectReference[];
+  isGenerating?: boolean;
 }
 
 type PreviewState =
@@ -18,7 +19,7 @@ type PreviewState =
   | { mode: "webcontainer"; status: string; url?: string; srcDoc?: undefined; error?: undefined }
   | { mode: "error"; status: string; error: string; url?: undefined; srcDoc?: undefined };
 
-export function PreviewPane({ files, references = [] }: PreviewPaneProps) {
+export function PreviewPane({ files, references = [], isGenerating = false }: PreviewPaneProps) {
   const runtimeRef = useRef<WebContainerRuntime | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [state, setState] = useState<PreviewState>({ mode: "idle", status: "Waiting" });
@@ -138,6 +139,26 @@ export function PreviewPane({ files, references = [] }: PreviewPaneProps) {
             <p>{displayState.status}</p>
           </div>
         )}
+
+        {isGenerating ? (
+          <div className="preview-skeleton" aria-hidden="true">
+            <div className="preview-skeleton-topbar">
+              <span className="preview-skeleton-dot" />
+              <span className="preview-skeleton-dot" />
+              <span className="preview-skeleton-dot" />
+              <span className="preview-skeleton-pill" />
+            </div>
+            <div className="preview-skeleton-hero" />
+            <div className="preview-skeleton-grid">
+              <span className="preview-skeleton-card" />
+              <span className="preview-skeleton-card" />
+              <span className="preview-skeleton-card" />
+            </div>
+            <span className="preview-skeleton-line long" />
+            <span className="preview-skeleton-line" />
+            <span className="preview-skeleton-line short" />
+          </div>
+        ) : null}
       </div>
 
       <details className="preview-log">
