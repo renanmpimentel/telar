@@ -95,3 +95,33 @@ describe("dependency snapshot cache", () => {
     expect(container.calls.mount.some((options) => options?.mountPoint === "node_modules")).toBe(true);
   });
 });
+
+describe("dev server launch", () => {
+  it("inicia o Vite pelo entry point JS, sem depender de node_modules/.bin", async () => {
+    const container = createFakeContainer();
+    boot.mockResolvedValue(container);
+
+    const runtime = new WebContainerRuntime(createEvents());
+    await runtime.sync(createDefaultProjectFiles());
+
+    const devCall = container.calls.spawn.find((call) =>
+      call.includes("node_modules/vite/bin/vite.js"),
+    );
+    // Invocar o arquivo real evita o exit-127 quando o .bin não é restaurado do cache.
+    expect(devCall?.[0]).toBe("node");
+    expect(container.calls.spawn.some((call) => call[0] === "npm" && call[1] === "run")).toBe(false);
+  });
+
+  it("usa flags rápidas no npm install", async () => {
+    const container = createFakeContainer();
+    boot.mockResolvedValue(container);
+
+    const runtime = new WebContainerRuntime(createEvents());
+    await runtime.sync(createDefaultProjectFiles());
+
+    const installCall = container.calls.spawn.find(
+      (call) => call[0] === "npm" && call[1] === "install",
+    );
+    expect(installCall).toEqual(["npm", "install", "--prefer-offline", "--no-audit", "--no-fund"]);
+  });
+});

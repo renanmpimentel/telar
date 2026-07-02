@@ -4,6 +4,7 @@ import { AlertTriangle, ExternalLink, Info, Loader2, MonitorPlay } from "lucide-
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { openPreviewWindow } from "@/lib/client/preview-window";
+import { createModuleCache } from "@/lib/preview/module-cache";
 import type { ProjectFileMap, ProjectReference } from "@/lib/project/types";
 import { WebContainerRuntime } from "@/lib/preview/webcontainer-runtime";
 
@@ -53,26 +54,29 @@ export function PreviewPane({ files, references = [], isGenerating = false }: Pr
     }
 
     if (!runtimeRef.current) {
-      runtimeRef.current = new WebContainerRuntime({
-        onStatus: (status) =>
-          setState((current) => ({
-            mode: "webcontainer",
-            status,
-            url: current.mode === "webcontainer" ? current.url : undefined,
-          })),
-        onUrl: (url) =>
-          setState({
-            mode: "webcontainer",
-            status: "Preview ready",
-            url,
-          }),
-        onLog: (line) => {
-          setLogs((current) => [...current.slice(-18), line]);
+      runtimeRef.current = new WebContainerRuntime(
+        {
+          onStatus: (status) =>
+            setState((current) => ({
+              mode: "webcontainer",
+              status,
+              url: current.mode === "webcontainer" ? current.url : undefined,
+            })),
+          onUrl: (url) =>
+            setState({
+              mode: "webcontainer",
+              status: "Preview ready",
+              url,
+            }),
+          onLog: (line) => {
+            setLogs((current) => [...current.slice(-18), line]);
+          },
+          onError: (message) => {
+            setState({ mode: "error", status: "Preview error", error: message });
+          },
         },
-        onError: (message) => {
-          setState({ mode: "error", status: "Preview error", error: message });
-        },
-      });
+        { moduleCache: createModuleCache() },
+      );
     }
 
     let cancelled = false;

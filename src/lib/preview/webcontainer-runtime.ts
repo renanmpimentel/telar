@@ -54,10 +54,12 @@ export class WebContainerRuntime {
     private readonly events: RuntimeEvents,
     private readonly options: RuntimeOptions = {},
   ) {
-    // The node_modules snapshot cache is OPT-IN: a bare export()/mount() round-trip
-    // does not reliably restore node_modules/.bin executables (e.g. vite), which
-    // makes `npm run dev` fail with exit code 127. Enable it only by passing an
-    // explicit `moduleCache` (e.g. createModuleCache()) once that is solved.
+    // The node_modules snapshot cache lets a page reload remount dependencies from
+    // IndexedDB instead of reinstalling them. Pass an explicit `moduleCache`
+    // (e.g. createModuleCache()) to enable it; the dev server launches Vite by its
+    // JS entry point, so the missing .bin symlinks in a restored snapshot no longer
+    // break startup (previously an exit-code-127 failure). Defaults to off so unit
+    // tests and non-persistent callers stay free of IndexedDB.
     this.moduleCache = options.moduleCache ?? null;
   }
 
@@ -145,7 +147,14 @@ export class WebContainerRuntime {
 
   private async install(container: WebContainerInstance): Promise<void> {
     this.events.onStatus("Installing preview dependencies");
-    const process = await container.spawn("npm", ["install"]);
+    // --prefer-offline reuses WebContainer's npm cache; --no-audit/--no-fund skip
+    // network round-trips that add seconds without changing the installed tree.
+    const process = await container.spawn("npm", [
+      "install",
+      "--prefer-offline",
+      "--no-audit",
+      "--no-fund",
+    ]);
     this.pipeProcessOutput(process);
     const exitCode = await process.exit;
 
@@ -156,7 +165,16 @@ export class WebContainerRuntime {
 
   private async startDevServer(container: WebContainerInstance): Promise<void> {
     this.events.onStatus("Starting Vite preview");
-    const process = await container.spawn("npm", ["run", "dev", "--", "--host", "0.0.0.0"]);
+    // Launch Vite through its real JS entry point instead of `npm run dev` /
+    // node_modules/.bin/vite: a node_modules snapshot restored from the cache may
+    // not recreate the .bin symlinks, which would make the shim fail with exit 127.
+    // The package file itself is always present, so invoking it directly is safe in
+    // both the fresh-install and cache-hit paths.
+    const process = await container.spawn("node", [
+      "node_modules/vite/bin/vite.js",
+      "--host",
+      "0.0.0.0",
+    ]);
     this.pipeProcessOutput(process);
     process.exit.then((exitCode) => {
       if (exitCode !== 0) {
