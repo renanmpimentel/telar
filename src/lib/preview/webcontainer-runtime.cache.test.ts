@@ -97,19 +97,15 @@ describe("dependency snapshot cache", () => {
 });
 
 describe("dev server launch", () => {
-  it("inicia o Vite pelo entry point JS, sem depender de node_modules/.bin", async () => {
+  it("inicia o dev server via npm run dev", async () => {
     const container = createFakeContainer();
     boot.mockResolvedValue(container);
 
     const runtime = new WebContainerRuntime(createEvents());
     await runtime.sync(createDefaultProjectFiles());
 
-    const devCall = container.calls.spawn.find((call) =>
-      call.includes("node_modules/vite/bin/vite.js"),
-    );
-    // Invocar o arquivo real evita o exit-127 quando o .bin não é restaurado do cache.
-    expect(devCall?.[0]).toBe("node");
-    expect(container.calls.spawn.some((call) => call[0] === "npm" && call[1] === "run")).toBe(false);
+    const devCall = container.calls.spawn.find((call) => call[0] === "npm" && call[1] === "run");
+    expect(devCall).toEqual(["npm", "run", "dev", "--", "--host", "0.0.0.0"]);
   });
 
   it("usa flags rápidas no npm install", async () => {
