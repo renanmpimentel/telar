@@ -4,6 +4,7 @@ import { AlertTriangle, ExternalLink, Info, Loader2, MonitorPlay } from "lucide-
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { openPreviewWindow } from "@/lib/client/preview-window";
+import { createModuleCache } from "@/lib/preview/module-cache";
 import type { ProjectFileMap, ProjectReference } from "@/lib/project/types";
 import { WebContainerRuntime } from "@/lib/preview/webcontainer-runtime";
 
@@ -74,6 +75,7 @@ export function PreviewPane({ files, references = [], isGenerating = false }: Pr
             setState({ mode: "error", status: "Preview error", error: message });
           },
         },
+        { moduleCache: createModuleCache() },
       );
     }
 

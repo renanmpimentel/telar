@@ -15,8 +15,26 @@ interface FakeContainer {
   on: (event: string, callback: (port: number, url: string) => void) => void;
 }
 
-function createFakeContainer(): FakeContainer {
+function emptyStream(): ReadableStream<string> {
+  return new ReadableStream<string>({
+    start(controller) {
+      controller.close();
+    },
+  });
+}
+
+/**
+ * `devServer` scripts each `npm run dev` attempt in order: "ready" emits
+ * server-ready and keeps the process running; a number exits with that code
+ * without becoming ready (simulating a cache-restored install that cannot boot).
+ * Defaults to always becoming ready.
+ */
+function createFakeContainer(options: { devServer?: Array<"ready" | number> } = {}): FakeContainer {
   const calls = { mount: [] as Array<{ mountPoint?: string } | undefined>, spawn: [] as string[][], export: 0 };
+  const devServer = options.devServer ?? [];
+  let devAttempt = 0;
+  let serverReadyCb: ((port: number, url: string) => void) | undefined;
+
   return {
     calls,
     async mount(_tree, options) {
@@ -24,22 +42,24 @@ function createFakeContainer(): FakeContainer {
     },
     async spawn(command, args) {
       calls.spawn.push([command, ...args]);
-      return {
-        exit: Promise.resolve(0),
-        kill() {},
-        output: new ReadableStream<string>({
-          start(controller) {
-            controller.close();
-          },
-        }),
-      };
+      const isDevServer = command === "npm" && args[0] === "run";
+      if (!isDevServer) {
+        return { exit: Promise.resolve(0), kill() {}, output: emptyStream() };
+      }
+
+      const behavior = devServer[devAttempt++] ?? "ready";
+      if (behavior === "ready") {
+        if (serverReadyCb) queueMicrotask(() => serverReadyCb?.(3000, "http://preview.local"));
+        return { exit: new Promise<number>(() => {}), kill() {}, output: emptyStream() };
+      }
+      return { exit: Promise.resolve(behavior), kill() {}, output: emptyStream() };
     },
     async export() {
       calls.export += 1;
       return new Uint8Array([7, 7, 7]);
     },
     on(event, callback) {
-      if (event === "server-ready") callback(3000, "http://preview.local");
+      if (event === "server-ready") serverReadyCb = callback;
     },
   };
 }
@@ -93,6 +113,26 @@ describe("dependency snapshot cache", () => {
 
     expect(ranNpmInstall(container)).toBe(false);
     expect(container.calls.mount.some((options) => options?.mountPoint === "node_modules")).toBe(true);
+  });
+
+  it("reinstala e reinicia quando o dev server não sobe a partir do cache", async () => {
+    // Cache hit, but the restored node_modules can't launch the dev server on the
+    // first attempt (exit 127); the runtime must fall back to a clean install.
+    const container = createFakeContainer({ devServer: [127, "ready"] });
+    boot.mockResolvedValue(container);
+    const events = createEvents();
+    const cache: ModuleCache = {
+      load: async () => new Uint8Array([7, 7, 7]),
+      save: async () => {},
+    };
+
+    const runtime = new WebContainerRuntime(events, { moduleCache: cache });
+    await runtime.sync(createDefaultProjectFiles());
+
+    expect(ranNpmInstall(container)).toBe(true);
+    const devLaunches = container.calls.spawn.filter((call) => call[0] === "npm" && call[1] === "run");
+    expect(devLaunches).toHaveLength(2);
+    expect(events.onError).not.toHaveBeenCalled();
   });
 });
 

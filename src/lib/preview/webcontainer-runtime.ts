@@ -48,16 +48,20 @@ export class WebContainerRuntime {
   private devProcess?: RunningProcess;
   private installSignature?: string;
   private bootPromise?: Promise<WebContainerInstance>;
+  private serverReadyResolvers: Array<() => void> = [];
   private readonly moduleCache: ModuleCache | null;
 
   constructor(
     private readonly events: RuntimeEvents,
     private readonly options: RuntimeOptions = {},
   ) {
-    // The node_modules snapshot cache is OPT-IN: a bare export()/mount() round-trip
-    // does not reliably restore node_modules/.bin executables (e.g. vite), which
-    // makes `npm run dev` fail with exit code 127. Enable it only by passing an
-    // explicit `moduleCache` (e.g. createModuleCache()) once that is solved.
+    // The node_modules snapshot cache remounts dependencies from IndexedDB on a
+    // page reload instead of reinstalling them. It is self-healing: a bare
+    // export()/mount() round-trip may drop node_modules/.bin executables (e.g.
+    // vite), so if the restored snapshot cannot launch the dev server we fall back
+    // to a clean install and retry. Worst case therefore matches a no-cache run.
+    // Pass an explicit `moduleCache` (e.g. createModuleCache()) to enable it;
+    // defaults to off so unit tests stay free of IndexedDB.
     this.moduleCache = options.moduleCache ?? null;
   }
 
@@ -74,8 +78,27 @@ export class WebContainerRuntime {
     if (this.installSignature !== signature) {
       this.devProcess?.kill();
       this.devProcess = undefined;
-      await this.ensureDependencies(container, signature);
+
+      const usedCache = await this.ensureDependencies(container, signature);
       this.installSignature = signature;
+
+      const started = await this.startDevServer(container);
+      if (!started && usedCache) {
+        // The restored node_modules snapshot could not launch the dev server (e.g.
+        // its .bin executables were lost in the export/mount round-trip). Reinstall
+        // from scratch and retry once so a stale cache never breaks the preview.
+        // startDevServer already cleared devProcess when the failed attempt exited.
+        this.events.onStatus("Cached dependencies were incomplete, reinstalling");
+        await this.install(container);
+        await this.saveSnapshot(container, signature);
+        const restarted = await this.startDevServer(container);
+        if (!restarted) {
+          this.events.onError("Preview server failed to start");
+        }
+      } else if (!started) {
+        this.events.onError("Preview server failed to start");
+      }
+      return;
     }
 
     if (!this.devProcess) {
@@ -85,26 +108,30 @@ export class WebContainerRuntime {
     }
   }
 
-  private async ensureDependencies(container: WebContainerInstance, signature: string): Promise<void> {
+  /** Returns true when dependencies were remounted from the cache, false after a fresh install. */
+  private async ensureDependencies(container: WebContainerInstance, signature: string): Promise<boolean> {
     if (this.moduleCache) {
       const cached = await this.moduleCache.load(signature).catch(() => undefined);
       if (cached) {
         this.events.onStatus("Restoring cached dependencies");
         await container.mount(cached, { mountPoint: "node_modules" });
-        return;
+        return true;
       }
     }
 
     await this.install(container);
+    await this.saveSnapshot(container, signature);
+    return false;
+  }
 
-    if (this.moduleCache) {
-      try {
-        this.events.onStatus("Caching dependencies");
-        const snapshot = await container.export("node_modules", { format: "binary" });
-        await this.moduleCache.save(signature, snapshot);
-      } catch {
-        // Caching is best-effort; a failure here must not break the preview.
-      }
+  private async saveSnapshot(container: WebContainerInstance, signature: string): Promise<void> {
+    if (!this.moduleCache) return;
+    try {
+      this.events.onStatus("Caching dependencies");
+      const snapshot = await container.export("node_modules", { format: "binary" });
+      await this.moduleCache.save(signature, snapshot);
+    } catch {
+      // Caching is best-effort; a failure here must not break the preview.
     }
   }
 
@@ -122,6 +149,9 @@ export class WebContainerRuntime {
           container.on("server-ready", (_port, url) => {
             this.events.onUrl(url);
             this.events.onStatus("Preview ready");
+            const resolvers = this.serverReadyResolvers;
+            this.serverReadyResolvers = [];
+            for (const resolve of resolvers) resolve();
           });
           return container;
         }),
@@ -161,16 +191,33 @@ export class WebContainerRuntime {
     }
   }
 
-  private async startDevServer(container: WebContainerInstance): Promise<void> {
+  /** Starts the dev server and resolves true once it is serving, false if it exits first. */
+  private async startDevServer(container: WebContainerInstance): Promise<boolean> {
     this.events.onStatus("Starting Vite preview");
+    const ready = new Promise<void>((resolve) => this.serverReadyResolvers.push(resolve));
     const process = await container.spawn("npm", ["run", "dev", "--", "--host", "0.0.0.0"]);
     this.pipeProcessOutput(process);
-    process.exit.then((exitCode) => {
-      if (exitCode !== 0) {
-        this.events.onError(`Preview server exited with code ${exitCode}`);
-      }
-    });
     this.devProcess = process;
+
+    // The dev server is healthy once it emits `server-ready`; if the process exits
+    // before that, the (possibly cache-restored) install could not launch it.
+    const outcome = await Promise.race([
+      ready.then(() => "ready" as const),
+      process.exit.then((exitCode) => ({ exitCode })),
+    ]);
+
+    if (outcome === "ready") {
+      // Surface only crashes that happen after the server was already serving.
+      process.exit.then((exitCode) => {
+        if (exitCode !== 0 && this.devProcess === process) {
+          this.events.onError(`Preview server exited with code ${exitCode}`);
+        }
+      });
+      return true;
+    }
+
+    this.devProcess = undefined;
+    return false;
   }
 
   private pipeProcessOutput(process: RunningProcess): void {
