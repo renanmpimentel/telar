@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { toWebContainerTree, WebContainerRuntime } from "@/lib/preview/webcontainer-runtime";
+import {
+  dependencySignature,
+  toWebContainerTree,
+  WebContainerRuntime,
+} from "@/lib/preview/webcontainer-runtime";
 import { createDefaultProjectFiles } from "@/lib/project/template";
 import type { ProjectReference } from "@/lib/project/types";
 
@@ -77,5 +81,49 @@ describe("toWebContainerTree", () => {
     await vi.advanceTimersByTimeAsync(1000);
 
     await expectation;
+  });
+
+  it("does not give up on the default WebContainer boot window after 30 seconds", async () => {
+    const events = {
+      onStatus: vi.fn(),
+      onUrl: vi.fn(),
+      onLog: vi.fn(),
+      onError: vi.fn(),
+    };
+    const runtime = new WebContainerRuntime(events);
+
+    const syncPromise = runtime.sync(createDefaultProjectFiles());
+    syncPromise.catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(events.onError).not.toHaveBeenCalled();
+  });
+});
+
+describe("dependencySignature", () => {
+  it("é estável a formatação e ordem quando as dependências são iguais", () => {
+    const a = JSON.stringify({
+      dependencies: { react: "^19", "react-dom": "^19" },
+      devDependencies: { vite: "^8" },
+    });
+    const b = JSON.stringify(
+      {
+        devDependencies: { vite: "^8" },
+        dependencies: { "react-dom": "^19", react: "^19" },
+      },
+      null,
+      2,
+    );
+    expect(dependencySignature(a)).toBe(dependencySignature(b));
+  });
+
+  it("muda quando uma versão de dependência muda", () => {
+    const a = JSON.stringify({ dependencies: { react: "^19" } });
+    const b = JSON.stringify({ dependencies: { react: "^18" } });
+    expect(dependencySignature(a)).not.toBe(dependencySignature(b));
+  });
+
+  it("cai para a string crua quando o JSON é inválido", () => {
+    expect(dependencySignature("{invalido")).toBe("{invalido");
   });
 });

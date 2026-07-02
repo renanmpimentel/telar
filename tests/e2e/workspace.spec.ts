@@ -59,7 +59,7 @@ test("keeps the mobile workspace within the viewport width", async ({ page }) =>
   expect(overflow.documentWidth).toBeLessThanOrEqual(overflow.viewportWidth);
 });
 
-test("opens the mock preview in a new browser tab", async ({ page }) => {
+test("opens the mock preview in a same-origin fullscreen tab", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("like-figma.previewMode", "mock");
     indexedDB.deleteDatabase("like-figma");
@@ -73,8 +73,36 @@ test("opens the mock preview in a new browser tab", async ({ page }) => {
   const popupPromise = page.waitForEvent("popup");
   await openPreviewButton.click();
   const popup = await popupPromise;
-  await expect(popup.locator(".mock-root").getByText("Start by asking the assistant for a UI.")).toBeVisible();
+  await popup.waitForLoadState("domcontentloaded");
+  expect(popup.url()).toContain("/preview/fullscreen?previewId=");
+  expect(popup.url()).not.toContain("local-corp.webcontainer-api.io");
+  expect(popup.url()).not.toContain("blob:");
+
+  const previewFrame = popup.locator('iframe[title="Fullscreen project preview"]');
+  await expect(previewFrame).toBeVisible();
+  const frameBox = await previewFrame.boundingBox();
+  const viewport = popup.viewportSize();
+  expect(frameBox).toBeTruthy();
+  expect(viewport).toBeTruthy();
+  expect(frameBox!.x).toBe(0);
+  expect(frameBox!.y).toBe(0);
+  expect(Math.round(frameBox!.width)).toBe(viewport!.width);
+  expect(Math.round(frameBox!.height)).toBe(viewport!.height);
+  await expect(
+    popup.frameLocator('iframe[title="Fullscreen project preview"]').locator(".mock-root").getByText(
+      "Start by asking the assistant for a UI.",
+    ),
+  ).toBeVisible();
   await popup.close();
+});
+
+test("shows an unavailable state when a fullscreen preview payload is missing", async ({ page }) => {
+  await page.goto("/preview/fullscreen?previewId=missing");
+
+  await expect(page.getByRole("main", { name: "Preview fullscreen" }).getByRole("alert")).toContainText(
+    "Preview indisponivel",
+  );
+  await expect(page.locator('iframe[title="Fullscreen project preview"]')).toHaveCount(0);
 });
 
 test("prioritizes preview and chat while keeping settings and files in drawers", async ({ page }) => {

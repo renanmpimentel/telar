@@ -3,6 +3,7 @@
 import { AlertTriangle, ExternalLink, Info, Loader2, MonitorPlay } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { openPreviewWindow } from "@/lib/client/preview-window";
 import type { ProjectFileMap, ProjectReference } from "@/lib/project/types";
 import { WebContainerRuntime } from "@/lib/preview/webcontainer-runtime";
 
@@ -21,6 +22,7 @@ export function PreviewPane({ files, references = [] }: PreviewPaneProps) {
   const runtimeRef = useRef<WebContainerRuntime | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [state, setState] = useState<PreviewState>({ mode: "idle", status: "Waiting" });
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [mockMode] = useState(() => readMockMode());
   const fileSignature = useMemo(() => stableProjectSignature(files, references), [files, references]);
   const displayState: PreviewState = mockMode
@@ -31,15 +33,12 @@ export function PreviewPane({ files, references = [] }: PreviewPaneProps) {
 
   function handleOpenPreview() {
     if (displayState.mode === "webcontainer" && displayState.url) {
-      window.open(displayState.url, "_blank", "noopener,noreferrer");
+      openPreviewWindow({ mode: "webcontainer", url: displayState.url });
       return;
     }
 
     if (displayState.mode === "mock") {
-      const blob = new Blob([displayState.srcDoc], { type: "text/html" });
-      const objectUrl = URL.createObjectURL(blob);
-      window.open(objectUrl, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+      openPreviewWindow({ mode: "mock", srcDoc: displayState.srcDoc });
     }
   }
 
@@ -75,10 +74,24 @@ export function PreviewPane({ files, references = [] }: PreviewPaneProps) {
       });
     }
 
-    runtimeRef.current.sync(files, references).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : "Preview failed to boot";
-      setState({ mode: "error", status: "Preview error", error: message });
-    });
+    let cancelled = false;
+    runtimeRef.current
+      .sync(files, references)
+      .then(() => {
+        // The dev server is running and files are mounted, but a bare mount()
+        // does not reliably trigger Vite HMR — force the iframe to reload so the
+        // preview always reflects the generated code.
+        if (!cancelled) setReloadNonce((nonce) => nonce + 1);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : "Preview failed to boot";
+        setState({ mode: "error", status: "Preview error", error: message });
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [fileSignature, files, references, mockMode]);
 
   return (
@@ -112,7 +125,11 @@ export function PreviewPane({ files, references = [] }: PreviewPaneProps) {
             <p>{displayState.error}</p>
           </div>
         ) : displayState.mode === "webcontainer" && displayState.url ? (
-          <iframe title="Project preview" src={displayState.url} className="preview-frame" />
+          <iframe
+            title="Project preview"
+            src={appendReloadParam(displayState.url, reloadNonce)}
+            className="preview-frame"
+          />
         ) : displayState.mode === "mock" ? (
           <iframe title="Project preview" srcDoc={displayState.srcDoc} className="preview-frame" />
         ) : (
@@ -132,6 +149,11 @@ export function PreviewPane({ files, references = [] }: PreviewPaneProps) {
       </details>
     </section>
   );
+}
+
+export function appendReloadParam(url: string, nonce: number): string {
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}__preview=${nonce}`;
 }
 
 function readMockMode(): boolean {

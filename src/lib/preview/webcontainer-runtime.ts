@@ -1,5 +1,6 @@
 "use client";
 
+import { createModuleCache, type ModuleCache } from "@/lib/preview/module-cache";
 import { assertValidReferencePath, decodeBase64ToUint8Array } from "@/lib/project/references";
 import type { ProjectFileMap, ProjectReference } from "@/lib/project/types";
 
@@ -22,8 +23,9 @@ interface RunningProcess {
 }
 
 interface WebContainerInstance {
-  mount: (tree: WebContainerTree) => Promise<void>;
+  mount: (tree: WebContainerTree | Uint8Array, options?: { mountPoint?: string }) => Promise<void>;
   spawn: (command: string, args: string[]) => Promise<RunningProcess>;
+  export: (path: string, options: { format: "binary" }) => Promise<Uint8Array>;
   on: (event: "server-ready", callback: (port: number, url: string) => void) => void;
 }
 
@@ -36,20 +38,24 @@ interface RuntimeEvents {
 
 interface RuntimeOptions {
   bootTimeoutMs?: number;
+  moduleCache?: ModuleCache | null;
 }
 
-const DEFAULT_BOOT_TIMEOUT_MS = 30_000;
+const DEFAULT_BOOT_TIMEOUT_MS = 120_000;
 
 export class WebContainerRuntime {
   private container?: WebContainerInstance;
   private devProcess?: RunningProcess;
   private installSignature?: string;
   private bootPromise?: Promise<WebContainerInstance>;
+  private readonly moduleCache: ModuleCache | null;
 
   constructor(
     private readonly events: RuntimeEvents,
     private readonly options: RuntimeOptions = {},
-  ) {}
+  ) {
+    this.moduleCache = options.moduleCache === undefined ? createModuleCache() : options.moduleCache;
+  }
 
   async sync(files: ProjectFileMap, references: ProjectReference[] = []): Promise<void> {
     if (!globalThis.crossOriginIsolated) {
@@ -60,18 +66,41 @@ export class WebContainerRuntime {
     this.events.onStatus("Syncing files");
     await container.mount(toWebContainerTree(files, references));
 
-    const packageSignature = files["package.json"] ?? "";
-    if (this.installSignature !== packageSignature) {
+    const signature = dependencySignature(files["package.json"] ?? "");
+    if (this.installSignature !== signature) {
       this.devProcess?.kill();
       this.devProcess = undefined;
-      await this.install(container);
-      this.installSignature = packageSignature;
+      await this.ensureDependencies(container, signature);
+      this.installSignature = signature;
     }
 
     if (!this.devProcess) {
       await this.startDevServer(container);
     } else {
       this.events.onStatus("Preview updated");
+    }
+  }
+
+  private async ensureDependencies(container: WebContainerInstance, signature: string): Promise<void> {
+    if (this.moduleCache) {
+      const cached = await this.moduleCache.load(signature).catch(() => undefined);
+      if (cached) {
+        this.events.onStatus("Restoring cached dependencies");
+        await container.mount(cached, { mountPoint: "node_modules" });
+        return;
+      }
+    }
+
+    await this.install(container);
+
+    if (this.moduleCache) {
+      try {
+        this.events.onStatus("Caching dependencies");
+        const snapshot = await container.export("node_modules", { format: "binary" });
+        await this.moduleCache.save(signature, snapshot);
+      } catch {
+        // Caching is best-effort; a failure here must not break the preview.
+      }
     }
   }
 
@@ -162,6 +191,25 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
       },
     );
   });
+}
+
+export function dependencySignature(packageJson: string): string {
+  try {
+    const parsed = JSON.parse(packageJson) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const normalize = (deps: Record<string, string> = {}): string[] =>
+      Object.keys(deps)
+        .sort()
+        .map((name) => `${name}@${deps[name]}`);
+    return JSON.stringify({
+      dependencies: normalize(parsed.dependencies),
+      devDependencies: normalize(parsed.devDependencies),
+    });
+  } catch {
+    return packageJson;
+  }
 }
 
 export function toWebContainerTree(
