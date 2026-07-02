@@ -1,6 +1,6 @@
 "use client";
 
-import { createModuleCache, type ModuleCache } from "@/lib/preview/module-cache";
+import type { ModuleCache } from "@/lib/preview/module-cache";
 import { assertValidReferencePath, decodeBase64ToUint8Array } from "@/lib/project/references";
 import type { ProjectFileMap, ProjectReference } from "@/lib/project/types";
 
@@ -54,7 +54,11 @@ export class WebContainerRuntime {
     private readonly events: RuntimeEvents,
     private readonly options: RuntimeOptions = {},
   ) {
-    this.moduleCache = options.moduleCache === undefined ? createModuleCache() : options.moduleCache;
+    // The node_modules snapshot cache is OPT-IN: a bare export()/mount() round-trip
+    // does not reliably restore node_modules/.bin executables (e.g. vite), which
+    // makes `npm run dev` fail with exit code 127. Enable it only by passing an
+    // explicit `moduleCache` (e.g. createModuleCache()) once that is solved.
+    this.moduleCache = options.moduleCache ?? null;
   }
 
   async sync(files: ProjectFileMap, references: ProjectReference[] = []): Promise<void> {
