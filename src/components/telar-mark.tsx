@@ -5,10 +5,9 @@ interface TelarMarkProps {
 }
 
 /**
- * Telar brand mark: an emerald tile where a woven thread on the left resolves
- * into a small screen of pixels on the right — one of them golden, the freshly
- * "generated" cell. The name "Telar" means loom: the tool weaves raw threads
- * into interfaces.
+ * Telar brand mark: a pencil set on an emerald tile — the instrument of design.
+ * White barrel with a golden ferrule and sharpened tip, tipped with dark
+ * graphite, drawn on the diagonal so it reads as "make / draw".
  */
 export function TelarMark({ className, size = 34, title = "Telar" }: TelarMarkProps) {
   return (
@@ -26,25 +25,25 @@ export function TelarMark({ className, size = 34, title = "Telar" }: TelarMarkPr
           <stop stopColor="#13897a" />
           <stop offset="1" stopColor="#0b544a" />
         </linearGradient>
-        <linearGradient id="telar-gold" x1="26" y1="11" x2="37" y2="22" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#f4c65a" />
+        <linearGradient id="telar-gold" x1="14" y1="6" x2="26" y2="34" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#f6cd63" />
           <stop offset="1" stopColor="#e0a12f" />
         </linearGradient>
       </defs>
 
       <rect x="0.5" y="0.5" width="39" height="39" rx="9.5" fill="url(#telar-tile)" />
 
-      {/* The thread — woven, then feeding into the screen */}
-      <g stroke="#fff" strokeWidth="3" strokeLinecap="round" fill="none">
-        <path d="M6 12 Q10.5 16 6 20 Q1.5 24 6 28" />
-        <path d="M7 20 H13" />
+      <g transform="rotate(45 20 20)">
+        {/* Ferrule / eraser cap */}
+        <rect x="16" y="5" width="8" height="3.4" rx="1.6" fill="url(#telar-gold)" />
+        {/* Barrel */}
+        <rect x="16" y="9" width="8" height="16.5" fill="#fff" />
+        <line x1="20" y1="9.8" x2="20" y2="24.7" stroke="#e6e4de" strokeWidth="0.9" />
+        {/* Sharpened wood tip */}
+        <path d="M16 25.5 H24 L20 33 Z" fill="url(#telar-gold)" />
+        {/* Graphite point */}
+        <path d="M18.2 30.3 H21.8 L20 33 Z" fill="#0b3b35" />
       </g>
-
-      {/* The screen — three white pixels and one golden, freshly generated */}
-      <rect x="14" y="11" width="10.5" height="10.5" rx="2.6" fill="#fff" />
-      <rect x="26.5" y="11" width="10.5" height="10.5" rx="2.6" fill="url(#telar-gold)" />
-      <rect x="14" y="23.5" width="10.5" height="10.5" rx="2.6" fill="#fff" />
-      <rect x="26.5" y="23.5" width="10.5" height="10.5" rx="2.6" fill="#fff" />
     </svg>
   );
 }
