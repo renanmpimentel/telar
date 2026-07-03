@@ -60,7 +60,6 @@
   --radius: 8px;
   --radius-sm: 6px;
   --radius-pill: 999px;
-  --stage-max: 1120px; /* shared width axis for the preview document and the dock */
   --ease: 200ms cubic-bezier(0.4, 0, 0.2, 1);
   --focus-ring: 0 0 0 3px rgba(15, 118, 110, 0.26);
   --focus-ring-teal: 0 0 0 3px rgba(15, 118, 110, 0.26);
@@ -702,8 +701,8 @@ button:disabled {
   min-height: 0;
   flex: 1;
   display: grid;
-  place-items: center;
-  padding: 8px 8px 20px;
+  place-items: stretch;
+  padding: 16px;
   background: var(--canvas);
 }
 
@@ -796,11 +795,11 @@ button:disabled {
   }
 }
 
-/* The preview document: a centered card that clips the iframe's own
-   scrollbar flush to its rounded corners (single, clean scroll area). */
+/* The preview document: a near full-bleed stage that fills the central area
+   and clips the iframe's own scrollbar flush to its rounded corners
+   (single, clean scroll area). */
 .preview-doc {
   width: 100%;
-  max-width: var(--stage-max);
   height: 100%;
   min-height: 0;
   overflow: hidden;
@@ -1141,14 +1140,14 @@ button:disabled {
   padding: 9px 10px;
 }
 
-/* Command dock — floating bar at the foot of the canvas */
+/* Command dock — floating bar at the foot of the canvas, sharing the
+   preview's width axis (same 16px side inset as the stage). */
 .command-dock {
   flex: 0 0 auto;
-  align-self: center;
-  width: 100%;
-  max-width: var(--stage-max);
+  align-self: stretch;
+  margin: 0 16px;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-lg);
@@ -1188,11 +1187,12 @@ button:disabled {
   min-width: 0;
   min-height: 40px;
   max-height: 132px;
+  field-sizing: content; /* grows with content where supported; 1 line otherwise */
   resize: none;
   overflow-y: auto;
   border: 0;
   border-radius: var(--radius);
-  padding: 10px 8px;
+  padding: 8px 10px;
   background: transparent;
   color: var(--ink);
   line-height: 1.5;
@@ -1203,8 +1203,10 @@ button:disabled {
   color: var(--faint);
 }
 
-.dock-generate {
+.command-dock .dock-generate {
   flex: 0 0 auto;
+  min-height: 40px;
+  height: 40px;
   padding: 0 16px;
 }
 

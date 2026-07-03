@@ -227,6 +227,12 @@ function buildMockPreviewDoc(files: ProjectFileMap): string {
     <style>
       ${css}
       html, body { height: 100%; margin: 0; }
+      html { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+      html:hover, html:focus-within { scrollbar-color: rgba(0,0,0,0.22) transparent; }
+      html::-webkit-scrollbar { width: 8px; height: 8px; }
+      html::-webkit-scrollbar-thumb { background: transparent; border-radius: 8px; }
+      html:hover::-webkit-scrollbar-thumb, html:active::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.22); }
+      html::-webkit-scrollbar-track { background: transparent; }
       .mock-root { min-height: 100%; display: flow-root; }
       .mock-source { position: fixed; inset: auto 16px 16px 16px; max-height: 38vh; overflow: auto; border: 1px solid #d8d1c2; background: rgba(255,255,255,.86); color: #171717; padding: 12px; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
     </style>

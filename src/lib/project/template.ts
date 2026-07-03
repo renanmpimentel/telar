@@ -137,6 +137,36 @@ body {
   margin: 0;
 }
 
+/* Hidden preview scrollbar: transparent at rest, discreet on hover/scroll. */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+html:hover,
+html:focus-within {
+  scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+}
+
+html::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+html::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 8px;
+}
+
+html:hover::-webkit-scrollbar-thumb,
+html:active::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.22);
+}
+
+html::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .shell {
   min-height: 100vh;
   display: grid;

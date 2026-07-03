@@ -791,7 +791,7 @@ export function Workspace() {
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               placeholder="Ex.: uma pagina de vendas com planos, depoimentos e botao de contato..."
-              rows={2}
+              rows={1}
               disabled={isGenerating}
             />
             <button className="primary-command dock-generate" type="submit" disabled={isGenerating}>
