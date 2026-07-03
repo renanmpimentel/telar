@@ -1029,6 +1029,22 @@ button:disabled {
   border-radius: 5px;
 }
 
+/* Compact, restorable version marker (#1, #2…) */
+.version-tag {
+  margin-left: 2px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 0.74rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.message.version {
+  gap: 8px;
+}
+
 .message-toggle {
   align-self: flex-start;
   border: 0;

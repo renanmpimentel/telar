@@ -428,9 +428,11 @@ export function Workspace() {
         createdAt: new Date().toISOString(),
         files: applied.files,
       };
+      // The assistant reply is just a compact, restorable version marker (#1, #2…)
+      // instead of a verbose summary of what changed.
       const assistantMessage = createMessage(
         "assistant",
-        formatAssistantMessage(payload.change),
+        `#${project.versions.length + 1}`,
         false,
         version.id,
       );
@@ -1258,16 +1260,19 @@ function MessageItem({
     (message.content.length > 240 || message.content.split("\n").length > 4);
 
   return (
-    <article className={`message ${message.role} ${message.error ? "error" : ""}`}>
+    <article className={`message ${message.role} ${message.error ? "error" : ""} ${restorable ? "version" : ""}`}>
       {message.role === "user" ? <span className="message-label">{t("chat.you")}</span> : null}
       {message.role === "assistant" && !message.error ? (
         <div className="message-seal">
           <TelarMark size={15} title="Telar" />
           <span>Telar</span>
+          {restorable ? <span className="version-tag">{message.content}</span> : null}
         </div>
       ) : null}
       <div className="message-body">
-        <p className={collapsible && !expanded ? "is-clamped" : undefined}>{message.content}</p>
+        {restorable ? null : (
+          <p className={collapsible && !expanded ? "is-clamped" : undefined}>{message.content}</p>
+        )}
         {collapsible ? (
           <button
             type="button"
@@ -1343,11 +1348,6 @@ function createMessage(
     error,
     ...(versionId ? { versionId } : {}),
   };
-}
-
-function formatAssistantMessage(change: GeneratedChange): string {
-  const notes = [...change.notes, ...change.errors].filter(Boolean);
-  return notes.length > 0 ? `${change.summary}\n${notes.join("\n")}` : change.summary;
 }
 
 function getPreferredSelectedPath(project: Project, preferredPath: string): string {
