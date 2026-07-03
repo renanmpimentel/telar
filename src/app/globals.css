@@ -213,18 +213,20 @@ button:disabled {
 }
 
 .brand-copy p {
-  color: var(--muted);
-  font-size: 0.74rem;
-  font-weight: 720;
+  color: var(--ink);
+  font-size: 0.98rem;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
 }
 
 .brand-copy h1 {
   max-width: 620px;
   overflow: hidden;
-  color: var(--ink);
-  font-size: 1.04rem;
+  color: var(--muted);
+  font-size: 0.75rem;
   line-height: 1.2;
-  font-weight: 760;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -236,15 +238,14 @@ button:disabled {
 .project-selector {
   position: relative;
   min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
-  column-gap: 8px;
+  gap: 4px;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-pill);
   background: var(--panel);
-  padding: 5px 10px 6px 12px;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+  padding: 5px 6px 5px 14px;
+  transition: border-color var(--ease), box-shadow var(--ease);
 }
 
 .project-selector:hover {
@@ -257,22 +258,20 @@ button:disabled {
 }
 
 .project-selector-eyebrow {
-  grid-column: 1 / -1;
-  color: var(--muted);
-  font-size: 0.6rem;
-  font-weight: 780;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  display: none;
 }
 
 .project-selector .project-name-input {
-  grid-column: 1;
-  min-height: 22px;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 24px;
   border: 0;
   border-radius: 0;
   padding: 0;
   background: transparent;
   box-shadow: none;
+  color: var(--ink);
+  font-weight: 640;
 }
 
 .project-selector .project-name-input:focus {
@@ -281,25 +280,23 @@ button:disabled {
 }
 
 .project-selector-toggle {
-  grid-column: 2;
-  grid-row: 2;
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 24px;
   height: 24px;
-  margin: -2px -4px -2px 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: 50%;
   background: transparent;
-  color: var(--faint);
+  color: var(--muted);
   cursor: pointer;
-  transition: background-color 0.16s ease, color 0.16s ease;
+  transition: background-color var(--ease), color var(--ease);
 }
 
 .project-selector-toggle:hover {
-  background: var(--surface-muted, rgba(255, 255, 255, 0.05));
-  color: var(--text);
+  background: var(--panel-strong);
+  color: var(--ink);
 }
 
 .project-selector-toggle:focus-visible {
@@ -419,8 +416,8 @@ button:disabled {
 .key-input:focus-within,
 .prompt-form textarea:focus,
 .editor-wrap textarea:focus {
-  border-color: rgba(47, 103, 200, 0.66);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.11);
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
 }
 
 .topbar-actions {
@@ -472,9 +469,11 @@ button:disabled {
   justify-content: center;
   gap: 7px;
   min-width: 0;
-  padding: 0 11px;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--text);
   font-size: 0.86rem;
-  font-weight: 690;
+  font-weight: 640;
   white-space: nowrap;
 }
 
@@ -485,9 +484,13 @@ button:disabled {
 }
 
 .quiet-command svg,
-.secondary-command svg,
+.secondary-command svg {
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
 .region-title svg {
-  color: #596273;
+  color: var(--accent);
   flex: 0 0 auto;
 }
 
