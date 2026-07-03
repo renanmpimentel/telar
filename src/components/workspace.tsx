@@ -123,6 +123,7 @@ export function Workspace() {
   const projectMenuRef = useRef<HTMLDivElement>(null);
   const shellRef = useRef<HTMLElement>(null);
   const [chatWidth, setChatWidth] = useState<number | null>(null);
+  const [mobileTab, setMobileTab] = useState<"chat" | "preview">("chat");
 
   const [cliAgents, setCliAgents] = useState<{ claude: boolean; codex: boolean }>({
     claude: false,
@@ -635,6 +636,7 @@ export function Workspace() {
     <main
       ref={shellRef}
       className="app-shell"
+      data-mobile-tab={mobileTab}
       style={chatWidth ? ({ "--chat-width": `${chatWidth}px` } as CSSProperties) : undefined}
     >
       <input
@@ -737,6 +739,27 @@ export function Workspace() {
           </button>
         </nav>
       </header>
+
+      <div className="mobile-tabs" role="tablist" aria-label="Painéis">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobileTab === "chat"}
+          className={mobileTab === "chat" ? "is-active" : ""}
+          onClick={() => setMobileTab("chat")}
+        >
+          Chat
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobileTab === "preview"}
+          className={mobileTab === "preview" ? "is-active" : ""}
+          onClick={() => setMobileTab("preview")}
+        >
+          Preview
+        </button>
+      </div>
 
       <section className="workspace-region chat-region" aria-label="Chat">
         <div className="region-bar chat-bar">
