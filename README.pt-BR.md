@@ -26,6 +26,28 @@ _Telar_ é o tear da tecelagem — você descreve uma tela e ele tece o código,
 
 ---
 
+## Showcase
+
+Cada tela abaixo foi gerada a partir de um único prompt em inglês e renderizada ao vivo no preview do Telar, dentro do navegador — sem nenhuma linha de código escrita à mão.
+
+**Dashboard de analytics**
+
+> _"A SaaS analytics dashboard with a left sidebar navigation, a top bar with search and a user avatar, four KPI summary cards, a large revenue line chart, a traffic-sources donut chart, and a recent-activity table. Clean modern light theme with a teal accent."_
+
+![Dashboard de analytics gerado pelo Telar a partir de um prompt](docs/screenshots/01-analytics-dashboard.png)
+
+**Landing page de SaaS**
+
+> _"A modern landing page for a project-management SaaS: sticky nav, a bold hero with a product mockup, a three-column feature grid, a pricing section with three tiers, a testimonial, and a footer. Light theme with a vibrant indigo accent."_
+
+![Landing page de SaaS gerada pelo Telar a partir de um prompt](docs/screenshots/02-saas-landing.png)
+
+**Tela de configurações**
+
+> _"A user account settings screen: a left sidebar with sections, a Profile panel with avatar and edit button, a two-column form, a Notifications card with toggles, and a sticky footer with Cancel and Save buttons. Light theme with a violet accent."_
+
+![Tela de configurações de conta gerada pelo Telar a partir de um prompt](docs/screenshots/03-settings-profile.png)
+
 ## Por que Telar
 
 O Telar traz o fluxo de um canvas de design para a geração de código: descreva a tela, anexe referências quando precisar e veja um app React de verdade renderizar num preview ao vivo. Tudo roda **local-first** — seus projetos ficam no navegador (IndexedDB), e você usa sua própria chave de IA ou uma CLI local. Nada é enviado para um backend do Telar.
