@@ -4,21 +4,18 @@
       <stop stop-color="#13897a"/>
       <stop offset="1" stop-color="#0b544a"/>
     </linearGradient>
-    <linearGradient id="telar-weft" x1="7" y1="20" x2="33" y2="20" gradientUnits="userSpaceOnUse">
+    <linearGradient id="telar-gold" x1="26" y1="11" x2="37" y2="22" gradientUnits="userSpaceOnUse">
       <stop stop-color="#f4c65a"/>
       <stop offset="1" stop-color="#e0a12f"/>
     </linearGradient>
   </defs>
   <rect x="0.5" y="0.5" width="39" height="39" rx="9.5" fill="url(#telar-tile)"/>
-  <g stroke="#fff" stroke-width="2.8" stroke-linecap="round">
-    <path d="M11 8v24"/>
-    <path d="M17 8v24"/>
-    <path d="M23 8v24"/>
-    <path d="M29 8v24"/>
+  <g stroke="#fff" stroke-width="3" stroke-linecap="round" fill="none">
+    <path d="M6 12 Q10.5 16 6 20 Q1.5 24 6 28"/>
+    <path d="M7 20 H13"/>
   </g>
-  <path d="M7 20 Q11 15 14 20 Q17 25 20 20 Q23 15 26 20 Q29 25 33 20" fill="none" stroke="url(#telar-weft)" stroke-width="3" stroke-linecap="round"/>
-  <g stroke="#fff" stroke-width="2.8" stroke-linecap="round">
-    <path d="M17 20v6"/>
-    <path d="M29 20v6"/>
-  </g>
+  <rect x="14" y="11" width="10.5" height="10.5" rx="2.6" fill="#fff"/>
+  <rect x="26.5" y="11" width="10.5" height="10.5" rx="2.6" fill="url(#telar-gold)"/>
+  <rect x="14" y="23.5" width="10.5" height="10.5" rx="2.6" fill="#fff"/>
+  <rect x="26.5" y="23.5" width="10.5" height="10.5" rx="2.6" fill="#fff"/>
 </svg>
