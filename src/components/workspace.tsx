@@ -40,6 +40,7 @@ import {
 import { PreviewPane } from "@/components/preview-pane";
 import { TelarMark } from "@/components/telar-mark";
 import { handleGenerateClientError } from "@/lib/client/errors";
+import { LOCALE_LABELS, LOCALES, useI18n } from "@/lib/i18n";
 import { downloadProjectZip } from "@/lib/export/zip";
 import { applyGeneratedChange } from "@/lib/project/apply-files";
 import {
@@ -88,13 +89,10 @@ const DEFAULT_MODELS: Record<ProviderId, string> = {
 type ActiveDrawer = "settings" | "files" | "projects" | null;
 type SkillNotice = { tone: "success" | "error"; message: string };
 
-const promptExamples = [
-  "Landing page para uma cafeteria de bairro",
-  "Dashboard simples de vendas com cards e grafico",
-  "Tela de login acolhedora para um app financeiro",
-];
+const PROMPT_EXAMPLE_KEYS = ["examples.0", "examples.1", "examples.2"] as const;
 
 export function Workspace() {
+  const { t, locale, setLocale } = useI18n();
   const [project, setProject] = useState<Project | null>(null);
   const [summaries, setSummaries] = useState<ProjectSummary[]>([]);
   const [selectedPath, setSelectedPath] = useState("src/App.tsx");
@@ -261,8 +259,8 @@ export function Workspace() {
 
   const isCliProvider = provider === "claude-cli" || provider === "codex-cli";
   const generatingMessage = isCliProvider
-    ? `Gerando com o binário local (${provider === "claude-cli" ? "Claude" : "Codex"}). A CLI inicializa a cada pedido e usa o modelo padrão dela, então pode levar alguns minutos. Para acelerar, defina um modelo mais rápido no campo "Modelo". Pode aguardar.`
-    : "Gerando a tela…";
+    ? t("generating.cli", { name: provider === "claude-cli" ? "Claude" : "Codex" })
+    : t("generating.screen");
 
   async function refreshSummaries() {
     setSummaries(await listProjectSummaries());
@@ -357,7 +355,7 @@ export function Workspace() {
     const saved = await persist(restored);
     setSelectedPath(getPreferredSelectedPath(saved, selectedPath));
     const label = version.prompt.length > 60 ? `${version.prompt.slice(0, 60)}…` : version.prompt;
-    setNotice(`Versão restaurada: "${label}"`);
+    setNotice(t("notice.restored", { label }));
   }
 
   function handleModelChange(nextModel: string) {
@@ -380,7 +378,7 @@ export function Workspace() {
 
     if (!isCliProvider && !apiKey.trim()) {
       openDrawer("settings");
-      setSettingsNotice("Adicione sua chave de API para criar a tela.");
+      setSettingsNotice(t("notice.apiKeyNeeded"));
       setNotice(null);
       return;
     }
@@ -450,7 +448,7 @@ export function Workspace() {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Generation failed";
-      const friendlyMessage = `Nao consegui atualizar a tela. ${message}`;
+      const friendlyMessage = t("notice.updateFailed", { message });
       const assistantMessage = createMessage("assistant", friendlyMessage, true);
       await persist({
         ...project,
@@ -493,11 +491,13 @@ export function Workspace() {
       const nextProject = addReferenceUploads(project, uploads);
       await persist(nextProject);
       setReferenceNotice(
-        uploads.length === 1 ? "Referencia anexada." : `${uploads.length} referencias anexadas.`,
+        uploads.length === 1
+          ? t("notice.refAttachedOne")
+          : t("notice.refAttachedMany", { count: uploads.length }),
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao anexar referencia.";
-      setReferenceNotice(`Nao consegui anexar. ${message}`);
+      setReferenceNotice(t("notice.refAttachFailed", { message }));
     }
   }
 
@@ -506,7 +506,7 @@ export function Workspace() {
 
     const url = skillUrl.trim();
     if (!url) {
-      setSkillNotice({ tone: "error", message: "Cole uma URL publica de SKILL.md do GitHub." });
+      setSkillNotice({ tone: "error", message: t("skill.urlNeeded") });
       return;
     }
 
@@ -524,7 +524,7 @@ export function Workspace() {
 
       if (!response.ok || !isGithubGenerationSkill(payload)) {
         const message = "error" in payload ? payload.error?.message : undefined;
-        throw new Error(message || "Resposta invalida ao carregar a skill.");
+        throw new Error(message || t("skill.invalid"));
       }
 
       await persist({
@@ -533,10 +533,10 @@ export function Workspace() {
         updatedAt: new Date().toISOString(),
       });
       setSkillUrl(payload.sourceUrl);
-      setSkillNotice({ tone: "success", message: "Skill customizada ativa." });
+      setSkillNotice({ tone: "success", message: t("skill.active") });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao carregar a skill.";
-      setSkillNotice({ tone: "error", message: `Nao consegui carregar a skill. ${message}` });
+      setSkillNotice({ tone: "error", message: t("skill.loadFailed", { message }) });
     } finally {
       setIsLoadingSkill(false);
     }
@@ -551,7 +551,7 @@ export function Workspace() {
       updatedAt: new Date().toISOString(),
     });
     setSkillUrl("");
-    setSkillNotice({ tone: "success", message: "Skill padrao restaurada." });
+    setSkillNotice({ tone: "success", message: t("skill.restored") });
   }
 
   async function handleRemoveReference(reference: ProjectReference) {
@@ -562,14 +562,14 @@ export function Workspace() {
     if (selectedPath === reference.projectPath) {
       setSelectedPath(getPreferredSelectedPath(nextProject, "src/App.tsx"));
     }
-    setReferenceNotice("Referencia removida.");
+    setReferenceNotice(t("notice.refRemoved"));
   }
 
   if (!project) {
     return (
       <main className="boot-screen">
         <Loader2 className="spin" size={26} aria-hidden="true" />
-        <span>Abrindo o projeto</span>
+        <span>{t("boot.opening")}</span>
       </main>
     );
   }
@@ -579,7 +579,7 @@ export function Workspace() {
       <input
         ref={referenceInputRef}
         className="sr-only"
-        aria-label="Anexar referências"
+        aria-label={t("dock.attach")}
         type="file"
         accept={REFERENCE_ACCEPT_ATTRIBUTE}
         multiple
@@ -596,7 +596,7 @@ export function Workspace() {
 
         <div className="topbar-project">
           <label className="sr-only" htmlFor="project-name">
-            Nome do projeto
+            {t("topbar.projectName")}
           </label>
           <div className="project-selector" ref={projectMenuRef}>
             <span className="project-selector-eyebrow" aria-hidden="true">
@@ -612,7 +612,7 @@ export function Workspace() {
             <button
               type="button"
               className={`project-selector-toggle ${projectMenuOpen ? "is-open" : ""}`}
-              aria-label="Trocar de projeto"
+              aria-label={t("topbar.switchProject")}
               aria-haspopup="menu"
               aria-expanded={projectMenuOpen}
               onClick={() => setProjectMenuOpen((open) => !open)}
@@ -621,7 +621,7 @@ export function Workspace() {
             </button>
 
             {projectMenuOpen ? (
-              <div className="project-menu" role="menu" aria-label="Trocar de projeto">
+              <div className="project-menu" role="menu" aria-label={t("topbar.switchProject")}>
                 <div className="project-menu-list">
                   {summaries.map((summary) => {
                     const isActive = summary.id === project.id;
@@ -653,35 +653,35 @@ export function Workspace() {
                   }}
                 >
                   <FolderPlus size={15} aria-hidden="true" />
-                  <span>Novo projeto</span>
+                  <span>{t("projects.new")}</span>
                 </button>
               </div>
             ) : null}
           </div>
         </div>
 
-        <nav className="topbar-actions" aria-label="Ações do projeto">
+        <nav className="topbar-actions" aria-label={t("topbar.projectActions")}>
           <button
             className={`quiet-command chat-toggle ${chatOpen ? "is-active" : ""}`}
             type="button"
             aria-pressed={chatOpen}
-            aria-label={chatOpen ? "Recolher conversa" : "Abrir conversa"}
+            aria-label={chatOpen ? t("chat.collapse") : t("chat.open")}
             onClick={() => setChatOpen((open) => !open)}
           >
             <MessagesSquare size={16} aria-hidden="true" />
-            <span>Conversa</span>
+            <span>{t("topbar.conversation")}</span>
           </button>
           <button className="quiet-command" type="button" onClick={() => openDrawer("projects")}>
             <FolderKanban size={16} aria-hidden="true" />
-            <span>Projetos</span>
+            <span>{t("topbar.projects")}</span>
           </button>
           <button className="quiet-command" type="button" onClick={() => openDrawer("files")}>
             <FolderOpen size={16} aria-hidden="true" />
-            <span>Arquivos</span>
+            <span>{t("topbar.files")}</span>
           </button>
           <button className="quiet-command" type="button" onClick={() => openDrawer("settings")}>
             <Settings size={16} aria-hidden="true" />
-            <span>Configurações</span>
+            <span>{t("topbar.settings")}</span>
           </button>
         </nav>
       </header>
@@ -691,39 +691,39 @@ export function Workspace() {
           <button
             className="chat-backdrop"
             type="button"
-            aria-label="Recolher conversa"
+            aria-label={t("chat.collapse")}
             onClick={() => setChatOpen(false)}
           />
         ) : null}
 
-        <aside className="chat-region" aria-label="Chat">
+        <aside className="chat-region" aria-label={t("chat.title")}>
           <div className="region-bar chat-bar">
             <div className="region-title">
               <MessagesSquare size={17} aria-hidden="true" />
-              <span>Conversa</span>
+              <span>{t("chat.title")}</span>
             </div>
             <button
               className="icon-only chat-collapse"
               type="button"
-              aria-label="Recolher conversa"
+              aria-label={t("chat.collapse")}
               onClick={() => setChatOpen(false)}
             >
               <PanelLeftClose size={17} aria-hidden="true" />
             </button>
           </div>
 
-          <div className="message-list" aria-label="Conversa">
+          <div className="message-list" aria-label={t("chat.title")}>
           {project.messages.length === 0 ? (
             <div className="empty-chat">
               <Bot size={22} aria-hidden="true" />
               <div>
-                <p>Descreva a tela que voce quer criar.</p>
-                <span>Comece com um destes exemplos:</span>
+                <p>{t("chat.emptyTitle")}</p>
+                <span>{t("chat.emptyHint")}</span>
               </div>
               <div className="example-list">
-                {promptExamples.map((example) => (
-                  <button key={example} type="button" onClick={() => setDraft(example)}>
-                    {example}
+                {PROMPT_EXAMPLE_KEYS.map((key) => (
+                  <button key={key} type="button" onClick={() => setDraft(t(key))}>
+                    {t(key)}
                   </button>
                 ))}
               </div>
@@ -773,12 +773,12 @@ export function Workspace() {
 
           <form className="command-dock" onSubmit={handleGenerate}>
             <label className="sr-only" htmlFor="prompt">
-              Descreva a tela que você quer criar
+              {t("dock.label")}
             </label>
             <button
               className="dock-attach"
               type="button"
-              aria-label="Anexar referências"
+              aria-label={t("dock.attach")}
               onClick={() => referenceInputRef.current?.click()}
               disabled={isGenerating}
             >
@@ -787,10 +787,10 @@ export function Workspace() {
             <textarea
               id="prompt"
               className="dock-input"
-              aria-label="Descreva a tela que você quer criar"
+              aria-label={t("dock.label")}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              placeholder="Ex.: uma pagina de vendas com planos, depoimentos e botao de contato..."
+              placeholder={t("dock.placeholder")}
               rows={1}
               disabled={isGenerating}
             />
@@ -800,7 +800,7 @@ export function Workspace() {
               ) : (
                 <Send size={17} aria-hidden="true" />
               )}
-              <span>{isGenerating ? "Generating" : "Generate"}</span>
+              <span>{isGenerating ? t("dock.generating") : t("dock.generate")}</span>
             </button>
           </form>
         </div>
@@ -811,20 +811,20 @@ export function Workspace() {
           <button
             className="drawer-backdrop"
             type="button"
-            aria-label="Fechar drawer"
+            aria-label={t("drawer.close")}
             onClick={closeDrawer}
           />
           {activeDrawer === "settings" ? (
-            <section className="side-drawer" aria-label="Configurações">
+            <section className="side-drawer" aria-label={t("settings.title")}>
               <div className="drawer-header">
                 <div>
-                  <p>Configurar IA</p>
-                  <h2>Configurações</h2>
+                  <p>{t("settings.eyebrow")}</p>
+                  <h2>{t("settings.title")}</h2>
                 </div>
                 <button
                   className="icon-only"
                   type="button"
-                  aria-label="Fechar configurações"
+                  aria-label={t("settings.close")}
                   onClick={closeDrawer}
                 >
                   <X size={17} aria-hidden="true" />
@@ -840,7 +840,7 @@ export function Workspace() {
               <div className="drawer-stack">
                 <div className="settings-card">
                   <label className="field-label" htmlFor="provider">
-                    Serviço de IA
+                    {t("settings.aiService")}
                   </label>
                   <div className="segmented" id="provider" aria-label="Provider">
                     <button
@@ -879,23 +879,23 @@ export function Workspace() {
                 </div>
 
                 {isCliProvider ? (
-                  <p className="drawer-hint">Modo CLI: usa o binário local autenticado, sem API key.</p>
+                  <p className="drawer-hint">{t("settings.cliHint")}</p>
                 ) : (
                   <div className="settings-card">
                     <label className="field-label" htmlFor="api-key">
-                      API key
+                      {t("settings.apiKey")}
                     </label>
                     <div className="key-input">
                       <KeyRound size={16} aria-hidden="true" />
                       <input
                         ref={apiKeyInputRef}
                         id="api-key"
-                        aria-label="API key"
+                        aria-label={t("settings.apiKey")}
                         value={apiKey}
                         onChange={(event) => setApiKey(event.target.value)}
                         type="password"
                         autoComplete="off"
-                        placeholder="Cole sua chave aqui"
+                        placeholder={t("settings.apiKeyPlaceholder")}
                       />
                     </div>
                   </div>
@@ -903,7 +903,8 @@ export function Workspace() {
 
                 <div className="settings-card">
                   <label className="field-label" htmlFor="model">
-                    Modelo{isCliProvider ? " (opcional)" : ""}
+                    {t("settings.model")}
+                    {isCliProvider ? t("settings.modelOptional") : ""}
                   </label>
                   <input
                     id="model"
@@ -916,11 +917,11 @@ export function Workspace() {
                 <div className="settings-card generation-skill-card">
                   <div className="skill-card-header">
                     <div>
-                      <span className="field-label">Instruções do prompt</span>
-                      <h3>Skill de geração</h3>
+                      <span className="field-label">{t("settings.promptInstructions")}</span>
+                      <h3>{t("settings.generationSkill")}</h3>
                     </div>
                     <span className={`skill-source-pill ${project.generationSkill.source}`}>
-                      {project.generationSkill.source === "github" ? "GitHub" : "Padrão"}
+                      {project.generationSkill.source === "github" ? "GitHub" : t("settings.badgeDefault")}
                     </span>
                   </div>
 
@@ -935,20 +936,20 @@ export function Workspace() {
                       <small>
                         {project.generationSkill.source === "github"
                           ? project.generationSkill.sourceUrl
-                          : "Padrão ativo"}
+                          : t("settings.defaultActive")}
                       </small>
                     </div>
                   </div>
 
                   <label className="field-label" htmlFor="generation-skill-url">
-                    URL pública do SKILL.md
+                    {t("settings.skillUrl")}
                   </label>
                   <div className="skill-load-row">
                     <div className="key-input skill-url-input">
                       <Link2 size={16} aria-hidden="true" />
                       <input
                         id="generation-skill-url"
-                        aria-label="URL pública do SKILL.md"
+                        aria-label={t("settings.skillUrl")}
                         value={skillUrl}
                         onChange={(event) => setSkillUrl(event.target.value)}
                         type="url"
@@ -967,7 +968,7 @@ export function Workspace() {
                       ) : (
                         <GitBranch size={16} aria-hidden="true" />
                       )}
-                      <span>Carregar skill</span>
+                      <span>{t("settings.loadSkill")}</span>
                     </button>
                   </div>
 
@@ -987,22 +988,41 @@ export function Workspace() {
                     disabled={project.generationSkill.source !== "github"}
                   >
                     <RotateCcw size={16} aria-hidden="true" />
-                    <span>Remover skill</span>
+                    <span>{t("settings.removeSkill")}</span>
                   </button>
+                </div>
+
+                <div className="settings-card">
+                  <label className="field-label" htmlFor="language">
+                    {t("settings.language")}
+                  </label>
+                  <div className="segmented" id="language" aria-label={t("settings.language")}>
+                    {LOCALES.map((loc) => (
+                      <button
+                        key={loc}
+                        type="button"
+                        className={locale === loc ? "is-selected" : ""}
+                        aria-pressed={locale === loc}
+                        onClick={() => setLocale(loc)}
+                      >
+                        {LOCALE_LABELS[loc]}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </section>
           ) : activeDrawer === "projects" ? (
-            <section className="side-drawer projects-drawer" aria-label="Projetos">
+            <section className="side-drawer projects-drawer" aria-label={t("projects.title")}>
               <div className="drawer-header">
                 <div>
-                  <p>Gerenciar projetos</p>
-                  <h2>Projetos</h2>
+                  <p>{t("projects.eyebrow")}</p>
+                  <h2>{t("projects.title")}</h2>
                 </div>
                 <button
                   className="icon-only"
                   type="button"
-                  aria-label="Fechar projetos"
+                  aria-label={t("projects.close")}
                   onClick={closeDrawer}
                 >
                   <X size={17} aria-hidden="true" />
@@ -1012,16 +1032,18 @@ export function Workspace() {
               <div className="drawer-actions project-drawer-actions">
                 <button className="primary-command drawer-primary-command" type="button" onClick={() => void handleNewProject()}>
                   <FolderPlus size={17} aria-hidden="true" />
-                  <span>Novo projeto</span>
+                  <span>{t("projects.new")}</span>
                 </button>
               </div>
 
-              <div className="project-picker" aria-label="Projetos salvos">
+              <div className="project-picker" aria-label={t("projects.title")}>
                 {summaries.map((summary) => {
                   const isActive = summary.id === project.id;
                   const isConfirming = confirmingDeleteId === summary.id;
                   const conversationLabel =
-                    summary.messageCount === 1 ? "1 conversa" : `${summary.messageCount} conversas`;
+                    summary.messageCount === 1
+                      ? t("projects.conversationsOne")
+                      : t("projects.conversationsMany", { count: summary.messageCount });
 
                   return (
                     <article key={summary.id} className={`project-item ${isActive ? "is-active" : ""}`}>
@@ -1032,7 +1054,7 @@ export function Workspace() {
                             {isActive ? (
                               <span className="active-project-pill">
                                 <CheckCircle2 size={13} aria-hidden="true" />
-                                <span>Ativo</span>
+                                <span>{t("projects.active")}</span>
                               </span>
                             ) : null}
                           </div>
@@ -1043,17 +1065,17 @@ export function Workspace() {
                           <button
                             className="project-open"
                             type="button"
-                            aria-label={`Abrir ${summary.name}`}
+                            aria-label={t("projects.openAria", { name: summary.name })}
                             disabled={isActive}
                             onClick={() => void handleSelectProject(summary.id)}
                           >
                             <FolderOpen size={15} aria-hidden="true" />
-                            <span>{isActive ? "Aberto" : "Abrir"}</span>
+                            <span>{isActive ? t("projects.opened") : t("projects.open")}</span>
                           </button>
                           <button
                             className="project-delete"
                             type="button"
-                            aria-label={`Excluir ${summary.name}`}
+                            aria-label={t("projects.deleteAria", { name: summary.name })}
                             onClick={() => setConfirmingDeleteId(summary.id)}
                           >
                             <Trash2 size={15} aria-hidden="true" />
@@ -1062,25 +1084,25 @@ export function Workspace() {
                       </div>
 
                       {isConfirming ? (
-                        <div className="project-confirm" role="group" aria-label={`Confirmar exclusão de ${summary.name}`}>
-                          <span>Confirmar exclusão?</span>
+                        <div className="project-confirm" role="group" aria-label={t("projects.confirmDeleteAria", { name: summary.name })}>
+                          <span>{t("projects.confirmDelete")}</span>
                           <button
                             className="project-confirm-cancel"
                             type="button"
-                            aria-label={`Cancelar exclusão de ${summary.name}`}
+                            aria-label={t("projects.cancelDeleteAria", { name: summary.name })}
                             onClick={() => setConfirmingDeleteId(null)}
                           >
                             <X size={14} aria-hidden="true" />
-                            <span>Cancelar</span>
+                            <span>{t("projects.cancel")}</span>
                           </button>
                           <button
                             className="project-confirm-delete"
                             type="button"
-                            aria-label={`Confirmar exclusão de ${summary.name}`}
+                            aria-label={t("projects.confirmDeleteAria", { name: summary.name })}
                             onClick={() => void handleDeleteProject(summary.id)}
                           >
                             <Trash2 size={14} aria-hidden="true" />
-                            <span>Excluir</span>
+                            <span>{t("projects.delete")}</span>
                           </button>
                         </div>
                       ) : null}
@@ -1090,16 +1112,16 @@ export function Workspace() {
               </div>
             </section>
           ) : (
-            <section className="side-drawer files-drawer" aria-label="Arquivos do projeto">
+            <section className="side-drawer files-drawer" aria-label={t("files.title")}>
               <div className="drawer-header">
                 <div>
-                  <p>Exportar e editar</p>
-                  <h2>Arquivos do projeto</h2>
+                  <p>{t("files.eyebrow")}</p>
+                  <h2>{t("files.title")}</h2>
                 </div>
                 <button
                   className="icon-only"
                   type="button"
-                  aria-label="Fechar arquivos"
+                  aria-label={t("files.close")}
                   onClick={closeDrawer}
                 >
                   <X size={17} aria-hidden="true" />
@@ -1109,7 +1131,7 @@ export function Workspace() {
               <div className="drawer-actions">
                 <button className="secondary-command" type="button" onClick={() => void handleExport()}>
                   <Download size={17} aria-hidden="true" />
-                  <span>Export ZIP</span>
+                  <span>{t("files.exportZip")}</span>
                 </button>
                 <button
                   className="secondary-command"
@@ -1117,7 +1139,7 @@ export function Workspace() {
                   onClick={() => referenceInputRef.current?.click()}
                 >
                   <Upload size={17} aria-hidden="true" />
-                  <span>Adicionar referências</span>
+                  <span>{t("files.addReferences")}</span>
                 </button>
               </div>
 
@@ -1129,7 +1151,7 @@ export function Workspace() {
 
               <div className="file-grid">
                 <div className="file-sidebar">
-                  <nav className="file-tree" aria-label="Arquivos">
+                  <nav className="file-tree" aria-label={t("files.filesLabel")}>
                     {filePaths.map((filePath) => (
                       <button
                         key={filePath}
@@ -1144,18 +1166,18 @@ export function Workspace() {
                     ))}
                   </nav>
 
-                  <section className="reference-panel" aria-label="Referências">
+                  <section className="reference-panel" aria-label={t("files.references")}>
                     <div className="reference-panel-title">
                       <div>
-                        <h3>Referências</h3>
-                        <span>{project.references.length}/10 arquivos</span>
+                        <h3>{t("files.references")}</h3>
+                        <span>{t("files.referencesCount", { count: project.references.length })}</span>
                       </div>
                     </div>
 
                     {project.references.length === 0 ? (
                       <div className="reference-empty">
                         <Paperclip size={17} aria-hidden="true" />
-                        <span>Nenhuma referência anexada.</span>
+                        <span>{t("files.noReferences")}</span>
                       </div>
                     ) : (
                       <div className="reference-list">
@@ -1167,7 +1189,7 @@ export function Workspace() {
                             <button
                               className="reference-open"
                               type="button"
-                              aria-label={`Abrir referência ${reference.name}`}
+                              aria-label={t("files.openRefAria", { name: reference.name })}
                               onClick={() => setSelectedPath(reference.projectPath)}
                             >
                               {reference.kind === "text" ? (
@@ -1183,7 +1205,7 @@ export function Workspace() {
                             <button
                               className="reference-remove"
                               type="button"
-                              aria-label={`Remover referência ${reference.name}`}
+                              aria-label={t("files.removeRefAria", { name: reference.name })}
                               onClick={() => void handleRemoveReference(reference)}
                             >
                               <Trash2 size={14} aria-hidden="true" />
@@ -1201,7 +1223,7 @@ export function Workspace() {
                   <label className="editor-wrap">
                     <span>{selectedPath}</span>
                     <textarea
-                      aria-label="Editor de arquivo"
+                      aria-label={t("files.editor")}
                       value={selectedContent}
                       onChange={(event) => handleFileChange(event.target.value)}
                       spellCheck={false}
@@ -1228,6 +1250,7 @@ function MessageItem({
   isGenerating: boolean;
   onRestore: (versionId: string) => void;
 }) {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const collapsible =
     message.role === "assistant" &&
@@ -1236,7 +1259,7 @@ function MessageItem({
 
   return (
     <article className={`message ${message.role} ${message.error ? "error" : ""}`}>
-      {message.role === "user" ? <span className="message-label">Você</span> : null}
+      {message.role === "user" ? <span className="message-label">{t("chat.you")}</span> : null}
       {message.role === "assistant" && !message.error ? (
         <div className="message-seal">
           <TelarMark size={15} title="Telar" />
@@ -1252,7 +1275,7 @@ function MessageItem({
             onClick={() => setExpanded((value) => !value)}
             aria-expanded={expanded}
           >
-            {expanded ? "Ver menos" : "Ver mais"}
+            {expanded ? t("chat.seeLess") : t("chat.seeMore")}
           </button>
         ) : null}
         {restorable ? (
@@ -1261,10 +1284,10 @@ function MessageItem({
             className="restore-version"
             onClick={() => onRestore(message.versionId!)}
             disabled={isGenerating}
-            title="Restaurar os arquivos para esta versão"
+            title={t("chat.restoreTitle")}
           >
             <RotateCcw size={13} aria-hidden="true" />
-            Restaurar esta versão
+            {t("chat.restore")}
           </button>
         ) : null}
       </div>
@@ -1273,6 +1296,7 @@ function MessageItem({
 }
 
 function ReferencePreview({ reference }: { reference: ProjectReference }) {
+  const { t } = useI18n();
   const dataUrl = referenceToDataUrl(reference);
   const isImage = Boolean(dataUrl && reference.mimeType.startsWith("image/"));
 
@@ -1294,7 +1318,7 @@ function ReferencePreview({ reference }: { reference: ProjectReference }) {
         ) : (
           <div className="reference-preview-empty">
             <FileIcon size={28} aria-hidden="true" />
-            <p>Preview textual indisponivel para este arquivo.</p>
+            <p>{t("files.previewUnavailable")}</p>
           </div>
         )}
       </div>
@@ -1336,7 +1360,7 @@ function getPreferredSelectedPath(project: Project, preferredPath: string): stri
 async function readReferenceUpload(file: File): Promise<ReferenceUpload> {
   const kind = getReferenceKindForName(file.name);
   if (!kind) {
-    throw new ReferenceValidationError(`Tipo de arquivo nao suportado: ${file.name}`);
+    throw new ReferenceValidationError(`Unsupported file type: ${file.name}`);
   }
 
   if (kind === "text") {

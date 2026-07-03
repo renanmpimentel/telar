@@ -4,6 +4,7 @@ import { AlertTriangle, ExternalLink, Info, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { openPreviewWindow } from "@/lib/client/preview-window";
+import { useI18n } from "@/lib/i18n";
 import { createModuleCache } from "@/lib/preview/module-cache";
 import type { ProjectFileMap, ProjectReference } from "@/lib/project/types";
 import { WebContainerRuntime } from "@/lib/preview/webcontainer-runtime";
@@ -21,14 +22,21 @@ type PreviewState =
   | { mode: "error"; status: string; error: string; url?: undefined; srcDoc?: undefined };
 
 export function PreviewPane({ files, references = [], isGenerating = false }: PreviewPaneProps) {
+  const { t } = useI18n();
+  // Keep the latest translator in a ref so the runtime effect need not depend on it
+  // (re-running would tear down and rebuild the WebContainer on a language switch).
+  const tRef = useRef(t);
+  useEffect(() => {
+    tRef.current = t;
+  }, [t]);
   const runtimeRef = useRef<WebContainerRuntime | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
-  const [state, setState] = useState<PreviewState>({ mode: "idle", status: "Waiting" });
+  const [state, setState] = useState<PreviewState>({ mode: "idle", status: t("preview.waiting") });
   const [reloadNonce, setReloadNonce] = useState(0);
   const [mockMode] = useState(() => readMockMode());
   const fileSignature = useMemo(() => stableProjectSignature(files, references), [files, references]);
   const displayState: PreviewState = mockMode
-    ? { mode: "mock", status: "Preview ready", srcDoc: buildMockPreviewDoc(files) }
+    ? { mode: "mock", status: t("preview.ready"), srcDoc: buildMockPreviewDoc(files) }
     : state;
   const canOpenPreview =
     displayState.mode === "mock" || (displayState.mode === "webcontainer" && Boolean(displayState.url));
@@ -73,14 +81,14 @@ export function PreviewPane({ files, references = [], isGenerating = false }: Pr
           onUrl: (url) =>
             setState({
               mode: "webcontainer",
-              status: "Preview ready",
+              status: tRef.current("preview.ready"),
               url,
             }),
           onLog: (line) => {
             setLogs((current) => [...current.slice(-18), line]);
           },
           onError: (message) => {
-            setState({ mode: "error", status: "Preview error", error: message });
+            setState({ mode: "error", status: tRef.current("preview.error"), error: message });
           },
         },
         { moduleCache: createModuleCache() },
@@ -99,7 +107,7 @@ export function PreviewPane({ files, references = [], isGenerating = false }: Pr
       .catch((error: unknown) => {
         if (cancelled) return;
         const message = error instanceof Error ? error.message : "Preview failed to boot";
-        setState({ mode: "error", status: "Preview error", error: message });
+        setState({ mode: "error", status: tRef.current("preview.error"), error: message });
       });
 
     return () => {
@@ -108,7 +116,7 @@ export function PreviewPane({ files, references = [], isGenerating = false }: Pr
   }, [fileSignature, files, references, mockMode]);
 
   return (
-    <section className="preview-region" aria-label="Preview">
+    <section className="preview-region" aria-label={t("preview.region")}>
       <div className="canvas-bar">
         <div className="preview-actions">
           <span
@@ -126,8 +134,8 @@ export function PreviewPane({ files, references = [], isGenerating = false }: Pr
             type="button"
             onClick={handleOpenPreview}
             disabled={!canOpenPreview}
-            aria-label="Abrir preview em nova aba"
-            title={canOpenPreview ? "Abrir preview em nova aba" : "Preview indisponivel para abrir em nova aba"}
+            aria-label={t("preview.openNewTab")}
+            title={canOpenPreview ? t("preview.openNewTab") : t("preview.openNewTabDisabled")}
           >
             <ExternalLink size={15} aria-hidden="true" />
           </button>
@@ -183,9 +191,9 @@ export function PreviewPane({ files, references = [], isGenerating = false }: Pr
       <details className="preview-log">
         <summary>
           <Info size={15} aria-hidden="true" />
-          Detalhes
+          {t("preview.details")}
         </summary>
-        <pre>{logs.join("\n") || "Nenhuma mensagem do preview ainda."}</pre>
+        <pre>{logs.join("\n") || t("preview.noMessages")}</pre>
       </details>
     </section>
   );

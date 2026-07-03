@@ -8,6 +8,7 @@ import {
   readPreviewWindowPayload,
   type StoredPreviewWindowPayload,
 } from "@/lib/client/preview-window";
+import { useI18n } from "@/lib/i18n";
 
 type FullscreenPreviewState =
   | { status: "loading" }
@@ -15,6 +16,7 @@ type FullscreenPreviewState =
   | { status: "unavailable" };
 
 export default function FullscreenPreviewPage() {
+  const { t } = useI18n();
   const [state, setState] = useState<FullscreenPreviewState>({ status: "loading" });
 
   useEffect(() => {
@@ -36,10 +38,10 @@ export default function FullscreenPreviewPage() {
 
   if (state.status === "loading") {
     return (
-      <main className="fullscreen-preview-page" aria-label="Preview fullscreen">
+      <main className="fullscreen-preview-page" aria-label={t("fullscreen.region")}>
         <div className="fullscreen-preview-status">
           <Loader2 className="spin" size={24} aria-hidden="true" />
-          <p>Carregando preview...</p>
+          <p>{t("fullscreen.loading")}</p>
         </div>
       </main>
     );
@@ -47,12 +49,12 @@ export default function FullscreenPreviewPage() {
 
   if (state.status === "unavailable") {
     return (
-      <main className="fullscreen-preview-page" aria-label="Preview fullscreen">
+      <main className="fullscreen-preview-page" aria-label={t("fullscreen.region")}>
         <div className="fullscreen-preview-error" role="alert">
           <AlertTriangle size={24} aria-hidden="true" />
           <div>
-            <h1>Preview indisponivel</h1>
-            <p>Abra o preview novamente pelo workspace.</p>
+            <h1>{t("fullscreen.unavailableTitle")}</h1>
+            <p>{t("fullscreen.unavailableHint")}</p>
           </div>
         </div>
       </main>
