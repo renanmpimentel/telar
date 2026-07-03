@@ -24,7 +24,6 @@ import {
   Sparkles,
   Trash2,
   Upload,
-  UserRound,
   X,
 } from "lucide-react";
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -1154,9 +1153,12 @@ function MessageItem({
 
   return (
     <article className={`message ${message.role} ${message.error ? "error" : ""}`}>
-      <span className="message-avatar" aria-hidden="true">
-        {message.role === "user" ? <UserRound size={15} /> : <Bot size={15} />}
-      </span>
+      {message.role === "assistant" && !message.error ? (
+        <div className="message-seal">
+          <TelarMark size={15} title="Telar" />
+          <span>Telar</span>
+        </div>
+      ) : null}
       <div className="message-body">
         <p className={collapsible && !expanded ? "is-clamped" : undefined}>{message.content}</p>
         {collapsible ? (

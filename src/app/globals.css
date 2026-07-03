@@ -809,8 +809,8 @@ button:disabled {
   align-content: center;
   justify-items: stretch;
   gap: 14px;
-  border: 1px dashed #d6dbe4;
-  border-radius: 8px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
   background: var(--panel-soft);
   padding: 20px;
   color: var(--muted);
@@ -846,14 +846,14 @@ button:disabled {
 }
 
 .message {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  gap: 11px;
-  padding: 12px 13px;
+  max-width: 88%;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px 13px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--panel);
-  box-shadow: var(--shadow-sm);
 }
 
 .message p {
@@ -880,18 +880,20 @@ button:disabled {
   overflow: hidden;
 }
 
-.message-avatar {
-  width: 28px;
-  height: 28px;
-  display: inline-grid;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--panel-soft);
+/* Assistant identity seal */
+.message-seal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent-bright);
+  font-size: 0.72rem;
+  font-weight: 720;
+  letter-spacing: 0.01em;
 }
 
-.message-avatar svg {
-  margin-top: 0;
+.message-seal svg {
+  flex: 0 0 auto;
+  border-radius: 5px;
 }
 
 .message-toggle {
@@ -899,9 +901,9 @@ button:disabled {
   border: 0;
   background: transparent;
   padding: 0;
-  color: var(--accent);
+  color: var(--accent-bright);
   font-size: 0.78rem;
-  font-weight: 720;
+  font-weight: 700;
 }
 
 .message-toggle:hover {
@@ -916,16 +918,16 @@ button:disabled {
   margin-top: 1px;
   padding: 4px 11px;
   font-size: 0.75rem;
-  font-weight: 720;
-  color: var(--accent-strong);
-  background: var(--accent-soft);
-  border: 1px solid rgba(15, 111, 97, 0.26);
+  font-weight: 700;
+  color: var(--accent-bright);
+  background: transparent;
+  border: 1px solid var(--line-strong);
   border-radius: var(--radius-pill);
-  transition: color 0.14s ease, border-color 0.14s ease, background 0.14s ease;
+  transition: color var(--ease), border-color var(--ease), background var(--ease);
 }
 
 .restore-version:hover:not(:disabled) {
-  color: #ffffff;
+  color: var(--accent-ink);
   border-color: var(--accent);
   background: var(--accent);
 }
@@ -937,66 +939,57 @@ button:disabled {
 
 .restore-version svg {
   color: currentColor;
-  margin-top: 0;
 }
 
-.message svg {
-  color: var(--muted);
-  margin-top: 2px;
-}
-
+/* User — right-aligned dark emerald bubble */
 .message.user {
-  border-color: rgba(47, 110, 234, 0.18);
-  background: var(--panel-soft);
-  box-shadow:
-    inset 2px 0 0 rgba(47, 110, 234, 0.28),
-    0 1px 2px rgba(16, 24, 40, 0.02);
-}
-
-.message.user svg {
-  color: var(--blue);
-}
-
-.message.user .message-avatar {
-  border-color: rgba(47, 110, 234, 0.28);
+  align-self: flex-end;
+  border: 0;
   background: var(--user-soft);
+  border-radius: 12px 12px 4px 12px;
 }
 
-.message.assistant .message-avatar {
-  border-color: rgba(15, 111, 97, 0.26);
-  background: var(--assistant-soft);
+.message.user p {
+  color: #d7ece2;
 }
 
-.message.error .message-avatar {
-  border-color: rgba(180, 35, 24, 0.32);
-  background: var(--danger-soft);
-}
-
+/* Assistant — left-aligned bordered card */
 .message.assistant {
-  border-color: rgba(15, 111, 97, 0.17);
+  align-self: flex-start;
+  border: 1px solid var(--line);
   background: var(--panel);
-  box-shadow:
-    inset 2px 0 0 rgba(15, 111, 97, 0.24),
-    0 1px 2px rgba(16, 24, 40, 0.02);
+  border-radius: 12px 12px 12px 4px;
 }
 
 .message.pending {
-  border-color: rgba(15, 111, 97, 0.2);
-  background: linear-gradient(180deg, var(--panel-soft) 0%, var(--assistant-soft) 100%);
+  align-self: flex-start;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 12px 12px 12px 4px;
+}
+
+.message.pending svg {
+  color: var(--accent);
+  flex: 0 0 auto;
 }
 
 .message.pending p {
-  color: var(--accent-strong);
-  font-weight: 600;
-}
-
-.message.assistant svg {
-  color: var(--accent);
+  color: var(--accent-bright);
+  font-weight: 560;
 }
 
 .message.error {
-  border-color: rgba(180, 35, 24, 0.38);
+  align-self: flex-start;
+  border: 1px solid rgba(229, 103, 91, 0.4);
   background: var(--danger-soft);
+  border-radius: 12px 12px 12px 4px;
+}
+
+.message.error p {
+  color: var(--danger);
 }
 
 .notice,
@@ -1085,16 +1078,17 @@ button:disabled {
   min-height: 42px;
   justify-content: center;
   gap: 8px;
-  border-color: #101318;
-  background: #111216;
-  color: #ffffff;
-  font-weight: 800;
-  box-shadow: 0 9px 22px rgba(16, 24, 40, 0.14);
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 760;
+  box-shadow: 0 8px 20px rgba(29, 158, 117, 0.26);
 }
 
-.primary-command:hover {
+.primary-command:hover:not(:disabled) {
   transform: translateY(-1px);
-  background: #20242b;
+  background: var(--accent-bright);
+  border-color: var(--accent-bright);
 }
 
 .drawer-backdrop {
