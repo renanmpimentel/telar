@@ -261,7 +261,7 @@ export function Workspace() {
 
   const isCliProvider = provider === "claude-cli" || provider === "codex-cli";
   const generatingMessage = isCliProvider
-    ? `Gerando com o binário local (${provider === "claude-cli" ? "Claude" : "Codex"}). A CLI inicializa a cada pedido, então isso pode levar até ~2 min. Pode aguardar.`
+    ? `Gerando com o binário local (${provider === "claude-cli" ? "Claude" : "Codex"}). A CLI inicializa a cada pedido e usa o modelo padrão dela, então pode levar alguns minutos. Para acelerar, defina um modelo mais rápido no campo "Modelo". Pode aguardar.`
     : "Gerando a tela…";
 
   async function refreshSummaries() {

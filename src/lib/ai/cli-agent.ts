@@ -23,7 +23,18 @@ export interface CliAgentInput {
   schemaHint: string;
 }
 
-const TIMEOUT_MS = 120_000;
+// The local CLI initializes on every request and runs on its own default
+// model (often a large, slow one), so real generations — a big prompt plus a
+// full multi-file JSON output — regularly need more than a couple of minutes.
+// Default to 5 min; allow overriding via TELAR_CLI_TIMEOUT_MS (in ms).
+const DEFAULT_TIMEOUT_MS = 300_000;
+
+function resolveTimeoutMs(): number {
+  const raw = Number(process.env.TELAR_CLI_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_TIMEOUT_MS;
+}
+
+const TIMEOUT_MS = resolveTimeoutMs();
 const MAX_BUFFER = 20 * 1024 * 1024;
 
 const INSTRUCTION =
