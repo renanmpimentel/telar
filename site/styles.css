@@ -143,19 +143,26 @@ img { max-width: 100%; display: block; }
   position: sticky;
   top: 0;
   z-index: 20;
+  background: rgba(250, 249, 247, 0.72);
+  backdrop-filter: saturate(1.4) blur(10px);
+  -webkit-backdrop-filter: saturate(1.4) blur(10px);
+  border-bottom: 1px solid transparent;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.header-inner {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 14px var(--gutter);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  max-width: var(--maxw);
-  margin: 0 auto;
-  padding: 14px var(--gutter);
-  backdrop-filter: saturate(1.4) blur(10px);
-  background: rgba(250, 249, 247, 0.72);
-  border-bottom: 1px solid transparent;
-  transition: border-color 0.2s ease, background 0.2s ease;
 }
-.site-header.scrolled { border-color: var(--line); background: rgba(250, 249, 247, 0.9); }
+.site-header.scrolled {
+  background: rgba(250, 249, 247, 0.9);
+  border-color: var(--line);
+  box-shadow: var(--shadow-sm);
+}
 .brand { display: inline-flex; align-items: center; gap: 10px; }
 .brand-mark { border-radius: 8px; box-shadow: var(--shadow-sm); }
 .brand-name { font-family: var(--display); font-weight: 600; font-size: 1.28rem; color: var(--ink); }
