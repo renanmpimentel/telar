@@ -32,6 +32,14 @@ export function PreviewPane({ files, references = [], isGenerating = false }: Pr
     : state;
   const canOpenPreview =
     displayState.mode === "mock" || (displayState.mode === "webcontainer" && Boolean(displayState.url));
+  const statusTone: "ready" | "busy" | "error" | "idle" =
+    displayState.mode === "error"
+      ? "error"
+      : displayState.mode === "mock" || (displayState.mode === "webcontainer" && Boolean(displayState.url))
+        ? "ready"
+        : displayState.mode === "idle"
+          ? "idle"
+          : "busy";
 
   function handleOpenPreview() {
     if (displayState.mode === "webcontainer" && displayState.url) {
@@ -107,8 +115,9 @@ export function PreviewPane({ files, references = [], isGenerating = false }: Pr
           <span>Preview</span>
         </div>
         <div className="preview-actions">
-          <span className="status-pill" data-testid="preview-status">
-            {displayState.status}
+          <span className="status-pill" data-tone={statusTone} data-testid="preview-status">
+            <span className="status-dot" aria-hidden="true" />
+            <span className="status-label">{displayState.status}</span>
           </span>
           <button
             className="preview-open-button"

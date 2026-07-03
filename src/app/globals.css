@@ -144,11 +144,46 @@ button:disabled {
 .app-shell {
   height: 100dvh;
   display: grid;
-  grid-template-columns: clamp(320px, var(--chat-width, 420px), 62vw) minmax(0, 1fr);
+  grid-template-columns: clamp(320px, var(--chat-width, 420px), 62vw) 10px minmax(0, 1fr);
   grid-template-rows: 60px minmax(0, 1fr);
-  gap: 10px;
+  gap: 10px 2px;
   padding: 12px;
   overflow: hidden;
+}
+
+.pane-splitter {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.pane-splitter-grip {
+  width: 3px;
+  height: 44px;
+  border-radius: 999px;
+  background: var(--line-strong);
+  transition: background var(--ease), height var(--ease);
+}
+
+.pane-splitter:hover .pane-splitter-grip,
+.pane-splitter:focus-visible .pane-splitter-grip,
+body.is-resizing .pane-splitter-grip {
+  background: var(--accent);
+  height: 76px;
+}
+
+.pane-splitter:focus-visible {
+  outline: none;
+}
+
+body.is-resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .workspace-topbar {
@@ -512,7 +547,7 @@ button:disabled {
 }
 
 .preview-region {
-  grid-column: 2;
+  grid-column: 3;
 }
 
 .chat-region {
@@ -539,18 +574,71 @@ button:disabled {
 }
 
 .status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   min-width: 0;
-  max-width: 220px;
-  overflow: hidden;
-  border: 1px solid rgba(15, 111, 97, 0.18);
+  max-width: 250px;
+  border: 1px solid var(--line);
   border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-  padding: 4px 8px;
+  background: var(--panel-strong);
+  color: var(--text);
+  padding: 4px 11px 4px 9px;
   font-size: 0.74rem;
-  font-weight: 720;
+  font-weight: 620;
+}
+
+.status-label {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.status-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: background var(--ease);
+}
+
+.status-pill[data-tone="ready"] {
+  color: var(--accent-bright);
+}
+
+.status-pill[data-tone="ready"] .status-dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(29, 158, 117, 0.18);
+}
+
+.status-pill[data-tone="busy"] {
+  color: var(--amber);
+}
+
+.status-pill[data-tone="busy"] .status-dot {
+  background: var(--amber);
+  box-shadow: 0 0 0 3px rgba(224, 168, 72, 0.16);
+  animation: status-pulse 1.4s ease-in-out infinite;
+}
+
+.status-pill[data-tone="error"] {
+  color: var(--danger);
+}
+
+.status-pill[data-tone="error"] .status-dot {
+  background: var(--danger);
+}
+
+@keyframes status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 
 .preview-actions {
@@ -569,7 +657,7 @@ button:disabled {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
-  color: #596273;
+  color: var(--muted);
   transition:
     border-color 0.16s ease,
     color 0.16s ease,
@@ -600,7 +688,7 @@ button:disabled {
   flex-direction: column;
   gap: 16px;
   overflow: hidden;
-  border: 1px solid #dfe3ea;
+  border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
   box-shadow: 0 22px 62px rgba(16, 24, 40, 0.09);
@@ -614,7 +702,7 @@ button:disabled {
   background: linear-gradient(
     100deg,
     transparent 20%,
-    rgba(255, 255, 255, 0.72) 50%,
+    rgba(255, 255, 255, 0.06) 50%,
     transparent 80%
   );
   transform: translateX(-100%);
@@ -685,10 +773,10 @@ button:disabled {
   width: 100%;
   height: 100%;
   min-height: 610px;
-  border: 1px solid #dfe3ea;
-  border-radius: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
   background: white;
-  box-shadow: 0 22px 62px rgba(16, 24, 40, 0.09);
+  box-shadow: var(--card-shadow);
 }
 
 .preview-message {
@@ -699,11 +787,11 @@ button:disabled {
   gap: 10px;
   max-width: 440px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--panel);
   padding: 13px 15px;
   color: var(--muted);
-  box-shadow: 0 10px 30px rgba(16, 24, 40, 0.045);
+  box-shadow: var(--card-shadow);
 }
 
 .preview-message p {

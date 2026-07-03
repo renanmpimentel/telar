@@ -26,7 +26,17 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChangeEvent,
+  type CSSProperties,
+  FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { PreviewPane } from "@/components/preview-pane";
 import { TelarMark } from "@/components/telar-mark";
@@ -85,6 +95,11 @@ const promptExamples = [
   "Tela de login acolhedora para um app financeiro",
 ];
 
+const CHAT_WIDTH_KEY = "telar.chatWidth";
+const CHAT_WIDTH_MIN = 320;
+const CHAT_WIDTH_MAX = 900;
+const SHELL_PADDING = 12;
+
 export function Workspace() {
   const [project, setProject] = useState<Project | null>(null);
   const [summaries, setSummaries] = useState<ProjectSummary[]>([]);
@@ -106,6 +121,8 @@ export function Workspace() {
   const apiKeyInputRef = useRef<HTMLInputElement>(null);
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const projectMenuRef = useRef<HTMLDivElement>(null);
+  const shellRef = useRef<HTMLElement>(null);
+  const [chatWidth, setChatWidth] = useState<number | null>(null);
 
   const [cliAgents, setCliAgents] = useState<{ claude: boolean; codex: boolean }>({
     claude: false,
@@ -187,6 +204,16 @@ export function Workspace() {
   }, [projectMenuOpen]);
 
   useEffect(() => {
+    // Persisted splitter width is only available client-side, so it must be read
+    // after mount rather than during render.
+    const saved = Number(window.localStorage.getItem(CHAT_WIDTH_KEY));
+    if (Number.isFinite(saved) && saved >= CHAT_WIDTH_MIN && saved <= CHAT_WIDTH_MAX) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setChatWidth(saved);
+    }
+  }, []);
+
+  useEffect(() => {
     let active = true;
     fetch("/api/agents")
       .then((response) => (response.ok ? response.json() : { claude: false, codex: false }))
@@ -229,6 +256,46 @@ export function Workspace() {
   function closeDrawer() {
     setActiveDrawer(null);
     setConfirmingDeleteId(null);
+  }
+
+  function clampChatWidth(width: number): number {
+    const shell = shellRef.current;
+    const viewportMax = shell ? shell.getBoundingClientRect().width * 0.62 : CHAT_WIDTH_MAX;
+    return Math.max(CHAT_WIDTH_MIN, Math.min(width, Math.min(CHAT_WIDTH_MAX, viewportMax)));
+  }
+
+  function handleSplitterPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const shell = shellRef.current;
+    if (!shell) return;
+
+    let latest = chatWidth ?? shell.querySelector(".chat-region")?.getBoundingClientRect().width ?? 420;
+
+    function onMove(moveEvent: PointerEvent) {
+      const rect = shell!.getBoundingClientRect();
+      latest = clampChatWidth(moveEvent.clientX - rect.left - SHELL_PADDING);
+      setChatWidth(latest);
+    }
+    function onUp() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      document.body.classList.remove("is-resizing");
+      window.localStorage.setItem(CHAT_WIDTH_KEY, String(Math.round(latest)));
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    document.body.classList.add("is-resizing");
+  }
+
+  function handleSplitterKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? 48 : 16;
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const base = chatWidth ?? shellRef.current?.querySelector(".chat-region")?.getBoundingClientRect().width ?? 420;
+    const next = clampChatWidth(event.key === "ArrowLeft" ? base - step : base + step);
+    setChatWidth(next);
+    window.localStorage.setItem(CHAT_WIDTH_KEY, String(Math.round(next)));
   }
 
   async function persist(nextProject: Project) {
@@ -522,7 +589,11 @@ export function Workspace() {
   }
 
   return (
-    <main className="app-shell">
+    <main
+      ref={shellRef}
+      className="app-shell"
+      style={chatWidth ? ({ "--chat-width": `${chatWidth}px` } as CSSProperties) : undefined}
+    >
       <input
         ref={referenceInputRef}
         className="sr-only"
@@ -720,6 +791,18 @@ export function Workspace() {
           </div>
         </form>
       </section>
+
+      <div
+        className="pane-splitter"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Redimensionar painéis"
+        tabIndex={0}
+        onPointerDown={handleSplitterPointerDown}
+        onKeyDown={handleSplitterKeyDown}
+      >
+        <span className="pane-splitter-grip" aria-hidden="true" />
+      </div>
 
       <PreviewPane files={project.files} references={project.references} isGenerating={isGenerating} />
 
