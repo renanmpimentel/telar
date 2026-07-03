@@ -69,6 +69,7 @@
       "how.2.desc": "Your AI weaves a full React project, file by file.",
       "how.3.title": "Preview & export",
       "how.3.desc": "See it live, iterate, restore versions, ship a ZIP.",
+      "how.mock": "a pricing page with three tiers…",
 
       "showcase.kicker": "Made from a prompt",
       "showcase.title": "Real screens, one sentence each",
@@ -79,6 +80,9 @@
       "showcase.2.prompt": "“A modern landing page for a project-management SaaS: sticky nav, a bold hero with a product mockup, a feature grid, pricing tiers and a footer. Indigo accent.”",
       "showcase.3.label": "Account settings",
       "showcase.3.prompt": "“A user settings screen: a sidebar of sections, a profile panel with avatar and edit button, a two-column form, notification toggles and a sticky save footer. Violet accent.”",
+
+      "carousel.prev": "Previous example",
+      "carousel.next": "Next example",
 
       "quickstart.kicker": "Run it locally",
       "quickstart.title": "Up and weaving in a minute",
@@ -154,6 +158,7 @@
       "how.2.desc": "Sua IA tece um projeto React completo, arquivo por arquivo.",
       "how.3.title": "Preview e export",
       "how.3.desc": "Veja ao vivo, itere, restaure versões, exporte um ZIP.",
+      "how.mock": "uma página de preços com três planos…",
 
       "showcase.kicker": "Feito a partir de um prompt",
       "showcase.title": "Telas de verdade, uma frase cada",
@@ -164,6 +169,9 @@
       "showcase.2.prompt": "“A modern landing page for a project-management SaaS: sticky nav, a bold hero with a product mockup, a feature grid, pricing tiers and a footer. Indigo accent.”",
       "showcase.3.label": "Tela de configurações",
       "showcase.3.prompt": "“A user settings screen: a sidebar of sections, a profile panel with avatar and edit button, a two-column form, notification toggles and a sticky save footer. Violet accent.”",
+
+      "carousel.prev": "Exemplo anterior",
+      "carousel.next": "Próximo exemplo",
 
       "quickstart.kicker": "Rode localmente",
       "quickstart.title": "Tecendo em menos de um minuto",
@@ -221,8 +229,49 @@
     apply(locale);
   }
 
+  function initCarousel() {
+    var root = document.querySelector("[data-carousel]");
+    if (!root) return;
+    var track = root.querySelector(".carousel-track");
+    var slides = root.querySelectorAll(".slide");
+    var tabs = root.querySelectorAll(".carousel-tabs button");
+    var dots = root.querySelectorAll(".carousel-dots button");
+    var arrows = root.querySelectorAll(".car-arrow");
+    var count = slides.length;
+    var index = 0;
+
+    function go(i) {
+      index = (i + count) % count;
+      track.style.transform = "translateX(-" + index * 100 + "%)";
+      tabs.forEach(function (b, n) {
+        var on = n === index;
+        b.classList.toggle("is-active", on);
+        b.setAttribute("aria-selected", on ? "true" : "false");
+      });
+      dots.forEach(function (b, n) { b.classList.toggle("is-active", n === index); });
+    }
+
+    tabs.forEach(function (b) {
+      b.addEventListener("click", function () { go(parseInt(b.getAttribute("data-slide"), 10)); });
+    });
+    dots.forEach(function (b) {
+      b.addEventListener("click", function () { go(parseInt(b.getAttribute("data-slide"), 10)); });
+    });
+    arrows.forEach(function (b) {
+      b.addEventListener("click", function () { go(index + parseInt(b.getAttribute("data-dir"), 10)); });
+    });
+    // arrow-key navigation when the carousel has focus within
+    root.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowLeft") { go(index - 1); }
+      else if (e.key === "ArrowRight") { go(index + 1); }
+    });
+
+    go(0);
+  }
+
   function init() {
     apply(detect());
+    initCarousel();
 
     document.querySelectorAll(".lang-switch button").forEach(function (btn) {
       btn.addEventListener("click", function () {
@@ -240,7 +289,7 @@
 
     // reveal on scroll
     if (!window.matchMedia || !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      var targets = document.querySelectorAll(".section-head, .value-card, .feature-grid, .step, .shot, .quickstart-inner, .stack-list");
+      var targets = document.querySelectorAll(".section-head, .value-card, .feature, .step, .carousel, .quickstart-inner, .stack-list");
       if ("IntersectionObserver" in window) {
         var io = new IntersectionObserver(function (entries) {
           entries.forEach(function (en) {

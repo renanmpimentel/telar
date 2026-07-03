@@ -120,18 +120,18 @@
         <span class="kicker" data-i18n="features.kicker">Everything you need</span>
         <h2 data-i18n="features.title">A workspace, not a toy</h2>
       </div>
-      <div class="feature-grid">
-        <article class="feature"><span class="feature-ico">🧵</span><h4 data-i18n="feat.1.title">Prompt to UI</h4><p data-i18n="feat.1.desc">Describe a screen and get a complete, editable React project.</p></article>
-        <article class="feature"><span class="feature-ico">👀</span><h4 data-i18n="feat.2.title">Live preview</h4><p data-i18n="feat.2.desc">Runs in-browser via WebContainers, with a light mock mode for tests.</p></article>
-        <article class="feature"><span class="feature-ico">🗂️</span><h4 data-i18n="feat.3.title">Projects</h4><p data-i18n="feat.3.desc">Create, switch, rename and delete — each keeps its own history.</p></article>
-        <article class="feature"><span class="feature-ico">⏪</span><h4 data-i18n="feat.4.title">Versions</h4><p data-i18n="feat.4.desc">Every generation is a restorable snapshot.</p></article>
-        <article class="feature"><span class="feature-ico">📎</span><h4 data-i18n="feat.5.title">References</h4><p data-i18n="feat.5.desc">Attach text and image files to guide generation.</p></article>
-        <article class="feature"><span class="feature-ico">🧠</span><h4 data-i18n="feat.6.title">Bring your own AI</h4><p data-i18n="feat.6.desc">OpenAI, Anthropic (Claude), or a local Claude / Codex CLI — no key needed.</p></article>
-        <article class="feature"><span class="feature-ico">✍️</span><h4 data-i18n="feat.7.title">Generation skills</h4><p data-i18n="feat.7.desc">Ships with a frontend-design skill or loads a custom SKILL.md.</p></article>
-        <article class="feature"><span class="feature-ico">📦</span><h4 data-i18n="feat.8.title">Export</h4><p data-i18n="feat.8.desc">Download the whole project as a ZIP.</p></article>
-        <article class="feature"><span class="feature-ico">🌐</span><h4 data-i18n="feat.9.title">Internationalization</h4><p data-i18n="feat.9.desc">English and Portuguese, auto-detected and switchable.</p></article>
-        <article class="feature"><span class="feature-ico">🎨</span><h4 data-i18n="feat.10.title">Calm, light UI</h4><p data-i18n="feat.10.desc">A “Canvas + Dock” layout that keeps the preview center stage.</p></article>
-      </div>
+      <ul class="feature-list">
+        <li class="feature"><span class="feature-ico">🧵</span><div class="feature-body"><h4 data-i18n="feat.1.title">Prompt to UI</h4><p data-i18n="feat.1.desc">Describe a screen and get a complete, editable React project.</p></div></li>
+        <li class="feature"><span class="feature-ico">👀</span><div class="feature-body"><h4 data-i18n="feat.2.title">Live preview</h4><p data-i18n="feat.2.desc">Runs in-browser via WebContainers, with a light mock mode for tests.</p></div></li>
+        <li class="feature"><span class="feature-ico">🗂️</span><div class="feature-body"><h4 data-i18n="feat.3.title">Projects</h4><p data-i18n="feat.3.desc">Create, switch, rename and delete — each keeps its own history.</p></div></li>
+        <li class="feature"><span class="feature-ico">⏪</span><div class="feature-body"><h4 data-i18n="feat.4.title">Versions</h4><p data-i18n="feat.4.desc">Every generation is a restorable snapshot.</p></div></li>
+        <li class="feature"><span class="feature-ico">📎</span><div class="feature-body"><h4 data-i18n="feat.5.title">References</h4><p data-i18n="feat.5.desc">Attach text and image files to guide generation.</p></div></li>
+        <li class="feature"><span class="feature-ico">🧠</span><div class="feature-body"><h4 data-i18n="feat.6.title">Bring your own AI</h4><p data-i18n="feat.6.desc">OpenAI, Anthropic (Claude), or a local Claude / Codex CLI — no key needed.</p></div></li>
+        <li class="feature"><span class="feature-ico">✍️</span><div class="feature-body"><h4 data-i18n="feat.7.title">Generation skills</h4><p data-i18n="feat.7.desc">Ships with a frontend-design skill or loads a custom SKILL.md.</p></div></li>
+        <li class="feature"><span class="feature-ico">📦</span><div class="feature-body"><h4 data-i18n="feat.8.title">Export</h4><p data-i18n="feat.8.desc">Download the whole project as a ZIP.</p></div></li>
+        <li class="feature"><span class="feature-ico">🌐</span><div class="feature-body"><h4 data-i18n="feat.9.title">Internationalization</h4><p data-i18n="feat.9.desc">English and Portuguese, auto-detected and switchable.</p></div></li>
+        <li class="feature"><span class="feature-ico">🎨</span><div class="feature-body"><h4 data-i18n="feat.10.title">Calm, light UI</h4><p data-i18n="feat.10.desc">A “Canvas + Dock” layout that keeps the preview center stage.</p></div></li>
+      </ul>
     </section>
 
     <!-- HOW IT WORKS -->
@@ -142,20 +142,36 @@
       </div>
       <div class="steps">
         <div class="step">
-          <span class="step-num">01</span>
-          <h4 data-i18n="how.1.title">Describe</h4>
+          <div class="step-visual step-visual--prompt" aria-hidden="true">
+            <div class="mini-prompt">
+              <span class="mini-dot"></span>
+              <span class="mini-prompt-text" data-i18n="how.mock">a pricing page with three tiers…</span>
+              <span class="mini-caret"></span>
+            </div>
+          </div>
+          <div class="step-head"><span class="step-num">01</span><h4 data-i18n="how.1.title">Describe</h4></div>
           <p data-i18n="how.1.desc">Type the screen you want — attach references if it helps.</p>
         </div>
-        <div class="step-arrow" aria-hidden="true">→</div>
+
         <div class="step">
-          <span class="step-num">02</span>
-          <h4 data-i18n="how.2.title">Generate</h4>
+          <div class="step-visual step-visual--code" aria-hidden="true">
+            <span class="cl"><i class="t-key">export</i> <i class="t-fn">Pricing</i>() {</span>
+            <span class="cl">&nbsp;&nbsp;<i class="t-key">return</i> <i class="t-tag">&lt;section</i><i class="t-attr"> className</i>=<i class="t-str">"grid"</i><i class="t-tag">&gt;</i></span>
+            <span class="cl">&nbsp;&nbsp;&nbsp;&nbsp;<i class="t-tag">&lt;Tier</i><i class="t-attr"> highlighted </i><i class="t-tag">/&gt;</i></span>
+            <span class="cl">}</span>
+          </div>
+          <div class="step-head"><span class="step-num">02</span><h4 data-i18n="how.2.title">Generate</h4></div>
           <p data-i18n="how.2.desc">Your AI weaves a full React project, file by file.</p>
         </div>
-        <div class="step-arrow" aria-hidden="true">→</div>
+
         <div class="step">
-          <span class="step-num">03</span>
-          <h4 data-i18n="how.3.title">Preview &amp; export</h4>
+          <div class="step-visual step-visual--preview" aria-hidden="true">
+            <div class="mini-win">
+              <span class="mini-bar"><i></i><i></i><i></i></span>
+              <div class="mini-body"><span class="mb-lg"></span><span class="mb-row"><i></i><i class="hl"></i><i></i></span></div>
+            </div>
+          </div>
+          <div class="step-head"><span class="step-num">03</span><h4 data-i18n="how.3.title">Preview &amp; export</h4></div>
           <p data-i18n="how.3.desc">See it live, iterate, restore versions, ship a ZIP.</p>
         </div>
       </div>
@@ -169,29 +185,51 @@
         <p class="section-sub" data-i18n="showcase.sub">Every screen below was generated from a single English prompt and rendered live — no hand-written code.</p>
       </div>
 
-      <figure class="shot">
-        <figcaption>
-          <span class="shot-label" data-i18n="showcase.1.label">Analytics dashboard</span>
-          <span class="shot-prompt" data-i18n="showcase.1.prompt">“A SaaS analytics dashboard with a sidebar, four KPI cards, a revenue line chart, a traffic-sources donut and a recent-activity table. Teal accent.”</span>
-        </figcaption>
-        <img src="assets/01-analytics-dashboard.png" alt="Analytics dashboard generated by Telar" loading="lazy" />
-      </figure>
+      <div class="carousel" data-carousel>
+        <div class="carousel-tabs" role="tablist" aria-label="Examples">
+          <button type="button" role="tab" class="is-active" data-slide="0" data-i18n="showcase.1.label">Analytics dashboard</button>
+          <button type="button" role="tab" data-slide="1" data-i18n="showcase.2.label">SaaS landing page</button>
+          <button type="button" role="tab" data-slide="2" data-i18n="showcase.3.label">Account settings</button>
+        </div>
 
-      <figure class="shot">
-        <figcaption>
-          <span class="shot-label" data-i18n="showcase.2.label">SaaS landing page</span>
-          <span class="shot-prompt" data-i18n="showcase.2.prompt">“A modern landing page for a project-management SaaS: sticky nav, a bold hero with a product mockup, a feature grid, pricing tiers and a footer. Indigo accent.”</span>
-        </figcaption>
-        <img src="assets/02-saas-landing.png" alt="SaaS landing page generated by Telar" loading="lazy" />
-      </figure>
+        <div class="carousel-stage">
+          <button type="button" class="car-arrow car-prev" data-dir="-1" aria-label="Previous" data-i18n-attr="aria-label" data-i18n="carousel.prev">‹</button>
 
-      <figure class="shot">
-        <figcaption>
-          <span class="shot-label" data-i18n="showcase.3.label">Account settings</span>
-          <span class="shot-prompt" data-i18n="showcase.3.prompt">“A user settings screen: a sidebar of sections, a profile panel with avatar and edit button, a two-column form, notification toggles and a sticky save footer. Violet accent.”</span>
-        </figcaption>
-        <img src="assets/03-settings-profile.png" alt="Account settings screen generated by Telar" loading="lazy" />
-      </figure>
+          <div class="carousel-viewport">
+            <div class="carousel-track">
+              <figure class="slide">
+                <div class="shot-frame">
+                  <span class="shot-bar"><i></i><i></i><i></i></span>
+                  <img src="assets/01-analytics-dashboard.png" alt="Analytics dashboard generated by Telar" loading="lazy" />
+                </div>
+                <figcaption class="shot-prompt" data-i18n="showcase.1.prompt">“A SaaS analytics dashboard with a sidebar, four KPI cards, a revenue line chart, a traffic-sources donut and a recent-activity table. Teal accent.”</figcaption>
+              </figure>
+              <figure class="slide">
+                <div class="shot-frame">
+                  <span class="shot-bar"><i></i><i></i><i></i></span>
+                  <img src="assets/02-saas-landing.png" alt="SaaS landing page generated by Telar" loading="lazy" />
+                </div>
+                <figcaption class="shot-prompt" data-i18n="showcase.2.prompt">“A modern landing page for a project-management SaaS: sticky nav, a bold hero with a product mockup, a feature grid, pricing tiers and a footer. Indigo accent.”</figcaption>
+              </figure>
+              <figure class="slide">
+                <div class="shot-frame">
+                  <span class="shot-bar"><i></i><i></i><i></i></span>
+                  <img src="assets/03-settings-profile.png" alt="Account settings screen generated by Telar" loading="lazy" />
+                </div>
+                <figcaption class="shot-prompt" data-i18n="showcase.3.prompt">“A user settings screen: a sidebar of sections, a profile panel with avatar and edit button, a two-column form, notification toggles and a sticky save footer. Violet accent.”</figcaption>
+              </figure>
+            </div>
+          </div>
+
+          <button type="button" class="car-arrow car-next" data-dir="1" aria-label="Next" data-i18n-attr="aria-label" data-i18n="carousel.next">›</button>
+        </div>
+
+        <div class="carousel-dots" role="tablist" aria-label="Choose example">
+          <button type="button" class="is-active" data-slide="0" aria-label="1"></button>
+          <button type="button" data-slide="1" aria-label="2"></button>
+          <button type="button" data-slide="2" aria-label="3"></button>
+        </div>
+      </div>
     </section>
 
     <!-- QUICKSTART -->
