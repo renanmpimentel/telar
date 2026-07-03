@@ -1,52 +1,58 @@
 @import "tailwindcss";
 
 :root {
-  /* Dark IDE theme — surfaces */
-  --bg: #0b0c10;
-  --bg-chat: #0e0f13;
-  --bg-header: #12141a;
-  --bg-line: rgba(255, 255, 255, 0.04);
-  --panel: #16181e;
-  --panel-soft: #1b1e25;
-  --panel-strong: #23262e;
+  /* Canvas + Dock — light minimal surfaces */
+  --canvas: #faf9f7; /* app + canvas background */
+  --bg: #faf9f7;
+  --bg-chat: #ffffff;
+  --bg-header: #ffffff;
+  --bg-line: rgba(0, 0, 0, 0.03);
+  --panel: #ffffff; /* topbar, dock, drawers, cards */
+  --panel-soft: #faf9f7; /* insets, soft fills */
+  --panel-strong: #f1f0ec; /* skeleton blocks, quiet fills */
 
-  /* Text */
-  --ink: #e8eaed;
-  --text: #b8bcc4;
-  --muted: #7a7f8a;
-  --faint: #5c616b;
+  /* Text — tuned for AA on light surfaces */
+  --ink: #1a1c1a; /* primary */
+  --text: #4d524c; /* body / secondary */
+  --muted: #767b74; /* section labels, meta */
+  --faint: #a8aca6; /* placeholders, decorative */
 
   /* Borders */
-  --line: #23262e;
-  --line-strong: #2a2e37;
+  --line: #eeeeec; /* hairline */
+  --line-strong: #e2e2e0; /* input border, stronger hairline */
 
   /* Emerald accent */
-  --accent: #1d9e75;
-  --accent-strong: #17835f;
-  --accent-bright: #5dcaa5;
-  --accent-ink: #04342c;
-  --accent-soft: #14352b;
+  --accent: #0f766e;
+  --accent-strong: #0c5f58;
+  --accent-bright: #0f766e; /* used as accent text on light */
+  --accent-ink: #ffffff; /* text/icon on filled accent */
+  --accent-soft: #e7f0ee; /* soft accent surface */
+  --accent-wash: #f4faf8; /* faintest accent wash */
 
-  /* Semantic message colors (user bubble is dark emerald) */
+  /* Semantic message colors (user bubble is a soft emerald) */
   --user-accent: var(--accent);
-  --user-soft: #1d3a30;
+  --user-soft: #e7f0ee;
   --assistant-accent: var(--accent);
   --assistant-soft: var(--panel);
 
   /* Status hues */
-  --blue: #5b9dff;
-  --blue-soft: #182234;
-  --amber: #e0a848;
-  --amber-soft: #33280f;
-  --danger: #e5675b;
-  --danger-soft: #341c1a;
+  --ok: #10b981; /* ready dot */
+  --ok-ink: #0d7a5a; /* ready text */
+  --blue: #2f67c8;
+  --blue-soft: #eaf1fb;
+  --amber: #ef9f27; /* generating dot */
+  --amber-ink: #b06a0d; /* generating text */
+  --amber-soft: #fbf1de;
+  --danger: #c0392b;
+  --danger-soft: #fbecea;
 
-  /* Depth */
-  --shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-pop: 0 12px 34px rgba(0, 0, 0, 0.5);
-  --drawer-shadow: -24px 0 70px rgba(0, 0, 0, 0.55);
-  --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  /* Depth — soft, diffuse, never hard */
+  --shadow: 0 6px 24px rgba(0, 0, 0, 0.06);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.1);
+  --drawer-shadow: -24px 0 60px rgba(0, 0, 0, 0.12);
+  --card-shadow: 0 6px 24px rgba(0, 0, 0, 0.06);
+  --dock-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
 
   --mono: "SFMono-Regular", "Cascadia Code", "JetBrains Mono", "Liberation Mono", Menlo, monospace;
   --sans: "Aptos", "Segoe UI", "Avenir Next", system-ui, sans-serif;
@@ -55,8 +61,8 @@
   --radius-sm: 6px;
   --radius-pill: 999px;
   --ease: 200ms cubic-bezier(0.4, 0, 0.2, 1);
-  --focus-ring: 0 0 0 3px rgba(29, 158, 117, 0.32);
-  --focus-ring-teal: 0 0 0 3px rgba(29, 158, 117, 0.32);
+  --focus-ring: 0 0 0 3px rgba(15, 118, 110, 0.26);
+  --focus-ring-teal: 0 0 0 3px rgba(15, 118, 110, 0.26);
 }
 
 :where(button, input, textarea, summary, [tabindex]):focus-visible {
@@ -80,7 +86,8 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--sans);
-  color-scheme: dark;
+  color-scheme: light;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Dark, unobtrusive scrollbars for the internal panels */
@@ -102,7 +109,7 @@ body {
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: #363b45;
+  background: #cfcfca;
   background-clip: content-box;
 }
 
@@ -143,62 +150,69 @@ button:disabled {
 
 .app-shell {
   height: 100dvh;
-  display: grid;
-  grid-template-columns: clamp(320px, var(--chat-width, 420px), 62vw) 10px minmax(0, 1fr);
-  grid-template-rows: 60px minmax(0, 1fr);
-  gap: 10px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   padding: 12px;
+  background: var(--canvas);
   overflow: hidden;
 }
 
-.pane-splitter {
-  grid-column: 2;
-  grid-row: 2;
-  align-self: stretch;
+/* Row 2: optional conversation column + canvas */
+.workspace-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: col-resize;
-  touch-action: none;
+  gap: 10px;
 }
 
-.pane-splitter-grip {
-  width: 3px;
-  height: 44px;
-  border-radius: 999px;
-  background: var(--line-strong);
-  transition: background var(--ease), height var(--ease);
+/* Conversation column — collapsed by default, fixed width when open */
+.chat-region {
+  flex: 0 0 clamp(320px, 30vw, 400px);
+  min-width: 0;
+  min-height: 0;
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: 10px;
 }
 
-.pane-splitter:hover .pane-splitter-grip,
-.pane-splitter:focus-visible .pane-splitter-grip,
-body.is-resizing .pane-splitter-grip {
-  background: var(--accent);
-  height: 76px;
+.app-shell[data-chat-open="true"] .chat-region {
+  display: flex;
 }
 
-.pane-splitter:focus-visible {
-  outline: none;
+.chat-backdrop {
+  display: none;
 }
 
-body.is-resizing {
-  cursor: col-resize;
-  user-select: none;
+/* Canvas — the preview is the stage; the dock floats at its foot */
+.canvas {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .workspace-topbar {
   position: relative;
   z-index: 30;
-  grid-column: 1 / -1;
   min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(170px, 240px) auto;
   align-items: center;
   gap: 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--bg-header);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 8px 28px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-sm);
   padding: 8px 10px;
 }
 
@@ -250,7 +264,7 @@ body.is-resizing {
 .brand-copy p {
   color: var(--ink);
   font-size: 0.98rem;
-  font-weight: 750;
+  font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.15;
 }
@@ -400,7 +414,7 @@ body.is-resizing {
 
 .project-menu-item.is-active {
   color: var(--accent, #2f67c8);
-  font-weight: 680;
+  font-weight: 600;
 }
 
 .project-menu-name {
@@ -427,7 +441,6 @@ body.is-resizing {
 .project-name-input,
 .text-input,
 .key-input,
-.prompt-form textarea,
 .editor-wrap textarea {
   width: 100%;
   border: 1px solid var(--line);
@@ -443,13 +456,12 @@ body.is-resizing {
   background: var(--panel);
   color: var(--text);
   font-size: 0.88rem;
-  font-weight: 650;
+  font-weight: 600;
 }
 
 .project-name-input:focus,
 .text-input:focus,
 .key-input:focus-within,
-.prompt-form textarea:focus,
 .editor-wrap textarea:focus {
   border-color: var(--accent);
   box-shadow: var(--focus-ring);
@@ -508,8 +520,26 @@ body.is-resizing {
   background: transparent;
   color: var(--text);
   font-size: 0.86rem;
-  font-weight: 640;
+  font-weight: 550;
   white-space: nowrap;
+}
+
+/* Conversation toggle — reflects open state */
+.chat-toggle.is-active {
+  border-color: var(--accent-soft);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.chat-toggle.is-active svg {
+  color: var(--accent-strong);
+}
+
+.chat-collapse {
+  flex: 0 0 auto;
+  width: 34px;
+  padding: 0;
+  color: var(--muted);
 }
 
 .quiet-command span,
@@ -529,29 +559,24 @@ body.is-resizing {
   flex: 0 0 auto;
 }
 
-.workspace-region {
+/* Preview region — the open canvas (no panel chrome) */
+.preview-region {
+  flex: 1;
   min-width: 0;
   min-height: 0;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
-.preview-region,
-.chat-region {
-  grid-row: 2;
+/* Slim, right-aligned canvas bar: status + open-in-new-tab */
+.canvas-bar {
+  min-height: 32px;
   display: flex;
-  flex-direction: column;
-}
-
-.preview-region {
-  grid-column: 3;
-}
-
-.chat-region {
-  grid-column: 1;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 2px;
 }
 
 .region-bar {
@@ -570,7 +595,7 @@ body.is-resizing {
   gap: 8px;
   color: var(--ink);
   font-size: 0.88rem;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .status-pill {
@@ -605,21 +630,21 @@ body.is-resizing {
 }
 
 .status-pill[data-tone="ready"] {
-  color: var(--accent-bright);
+  color: var(--ok-ink);
 }
 
 .status-pill[data-tone="ready"] .status-dot {
-  background: var(--accent);
-  box-shadow: 0 0 0 3px rgba(29, 158, 117, 0.18);
+  background: var(--ok);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.16);
 }
 
 .status-pill[data-tone="busy"] {
-  color: var(--amber);
+  color: var(--amber-ink);
 }
 
 .status-pill[data-tone="busy"] .status-dot {
   background: var(--amber);
-  box-shadow: 0 0 0 3px rgba(224, 168, 72, 0.16);
+  box-shadow: 0 0 0 3px rgba(239, 159, 39, 0.18);
   animation: status-pulse 1.4s ease-in-out infinite;
 }
 
@@ -676,8 +701,9 @@ body.is-resizing {
   min-height: 0;
   flex: 1;
   display: grid;
-  padding: 12px;
-  background: var(--bg);
+  place-items: center;
+  padding: 8px 8px 20px;
+  background: var(--canvas);
 }
 
 .preview-skeleton {
@@ -702,7 +728,7 @@ body.is-resizing {
   background: linear-gradient(
     100deg,
     transparent 20%,
-    rgba(255, 255, 255, 0.06) 50%,
+    rgba(0, 0, 0, 0.045) 50%,
     transparent 80%
   );
   transform: translateX(-100%);
@@ -771,10 +797,11 @@ body.is-resizing {
 
 .preview-frame {
   width: 100%;
+  max-width: 1120px;
   height: 100%;
-  min-height: 610px;
+  min-height: 480px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
   background: white;
   box-shadow: var(--card-shadow);
 }
@@ -863,7 +890,7 @@ body.is-resizing {
 .fullscreen-preview-error h1 {
   color: var(--ink);
   font-size: 1rem;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .fullscreen-preview-error p {
@@ -872,13 +899,10 @@ body.is-resizing {
   font-size: 0.9rem;
 }
 
-.chat-region {
-  gap: 10px;
-  padding: 10px;
-}
-
 .chat-region > .region-bar {
   margin: -10px -10px 0;
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
 }
 
 .message-list {
@@ -911,7 +935,7 @@ body.is-resizing {
 
 .empty-chat p {
   color: var(--ink);
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .empty-chat span {
@@ -968,6 +992,16 @@ body.is-resizing {
   overflow: hidden;
 }
 
+/* User identity label */
+.message-label {
+  align-self: flex-end;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
 /* Assistant identity seal */
 .message-seal {
   display: inline-flex;
@@ -975,7 +1009,7 @@ body.is-resizing {
   gap: 6px;
   color: var(--accent-bright);
   font-size: 0.72rem;
-  font-weight: 720;
+  font-weight: 600;
   letter-spacing: 0.01em;
 }
 
@@ -991,7 +1025,7 @@ body.is-resizing {
   padding: 0;
   color: var(--accent-bright);
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .message-toggle:hover {
@@ -1006,7 +1040,7 @@ body.is-resizing {
   margin-top: 1px;
   padding: 4px 11px;
   font-size: 0.75rem;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--accent-bright);
   background: transparent;
   border: 1px solid var(--line-strong);
@@ -1029,7 +1063,7 @@ body.is-resizing {
   color: currentColor;
 }
 
-/* User — right-aligned dark emerald bubble */
+/* User — right-aligned soft emerald bubble */
 .message.user {
   align-self: flex-end;
   border: 0;
@@ -1038,15 +1072,16 @@ body.is-resizing {
 }
 
 .message.user p {
-  color: #d7ece2;
+  color: var(--ink);
 }
 
-/* Assistant — left-aligned bordered card */
+/* Assistant — left-aligned card marked by an emerald bar */
 .message.assistant {
   align-self: flex-start;
   border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
   background: var(--panel);
-  border-radius: 12px 12px 12px 4px;
+  border-radius: 4px 12px 12px 4px;
 }
 
 .message.pending {
@@ -1071,7 +1106,7 @@ body.is-resizing {
 
 .message.error {
   align-self: flex-start;
-  border: 1px solid rgba(229, 103, 91, 0.4);
+  border: 1px solid rgba(192, 57, 43, 0.28);
   background: var(--danger-soft);
   border-radius: 12px 12px 12px 4px;
 }
@@ -1094,40 +1129,76 @@ body.is-resizing {
   padding: 9px 10px;
 }
 
-.prompt-form {
+/* Command dock — floating bar at the foot of the canvas */
+.command-dock {
+  flex: 0 0 auto;
+  align-self: center;
+  width: min(760px, 100%);
   display: grid;
-  gap: 7px;
-}
-
-.prompt-actions {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: end;
   gap: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--dock-shadow);
+  padding: 8px;
+  transition: border-color var(--ease), box-shadow var(--ease);
 }
 
-.prompt-actions .primary-command {
-  width: 100%;
+.command-dock:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--dock-shadow), var(--focus-ring);
 }
 
-.attach-command {
-  min-width: 112px;
+.dock-attach {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--muted);
+  transition: border-color var(--ease), background-color var(--ease), color var(--ease);
 }
 
-.prompt-label,
+.dock-attach:hover:not(:disabled),
+.dock-attach:focus-visible {
+  border-color: var(--line-strong);
+  background: var(--panel-soft);
+  color: var(--ink);
+}
+
+.dock-input {
+  min-width: 0;
+  min-height: 40px;
+  max-height: 132px;
+  resize: none;
+  overflow-y: auto;
+  border: 0;
+  border-radius: var(--radius);
+  padding: 10px 8px;
+  background: transparent;
+  color: var(--ink);
+  line-height: 1.5;
+  outline: none;
+}
+
+.dock-input::placeholder {
+  color: var(--faint);
+}
+
+.dock-generate {
+  flex: 0 0 auto;
+  padding: 0 16px;
+}
+
 .field-label {
   color: var(--muted);
   font-size: 0.78rem;
-  font-weight: 760;
-}
-
-.prompt-form textarea {
-  height: 118px;
-  max-height: 118px;
-  field-sizing: fixed;
-  resize: none;
-  overflow-y: auto;
-  padding: 12px;
-  line-height: 1.5;
+  font-weight: 600;
 }
 
 .text-input {
@@ -1157,8 +1228,7 @@ body.is-resizing {
   color: var(--ink);
 }
 
-.key-input input::placeholder,
-.prompt-form textarea::placeholder {
+.key-input input::placeholder {
   color: var(--faint);
 }
 
@@ -1169,7 +1239,7 @@ body.is-resizing {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--accent-ink);
-  font-weight: 760;
+  font-weight: 600;
   box-shadow: 0 8px 20px rgba(29, 158, 117, 0.26);
 }
 
@@ -1184,8 +1254,7 @@ body.is-resizing {
   z-index: 20;
   inset: 0;
   border: 0;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(2px);
+  background: rgba(0, 0, 0, 0.18);
   padding: 0;
 }
 
@@ -1193,23 +1262,23 @@ body.is-resizing {
   position: fixed;
   z-index: 21;
   inset: 0 0 0 auto;
-  width: min(460px, calc(100vw - 24px));
+  width: min(380px, calc(100vw - 24px));
   display: flex;
   flex-direction: column;
   gap: 16px;
+  overflow-y: auto;
   border-left: 1px solid var(--line);
   background: var(--panel);
   box-shadow: var(--drawer-shadow);
-  backdrop-filter: blur(18px);
   padding: 18px;
 }
 
 .files-drawer {
-  width: min(900px, calc(100vw - 24px));
+  width: min(760px, calc(100vw - 24px));
 }
 
 .projects-drawer {
-  width: min(520px, calc(100vw - 24px));
+  width: min(360px, calc(100vw - 24px));
 }
 
 .drawer-header {
@@ -1224,7 +1293,7 @@ body.is-resizing {
 .drawer-header p {
   color: var(--muted);
   font-size: 0.74rem;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .drawer-header h2 {
@@ -1298,7 +1367,7 @@ body.is-resizing {
   color: var(--accent-strong);
   padding: 3px 8px;
   font-size: 0.72rem;
-  font-weight: 780;
+  font-weight: 600;
 }
 
 .skill-source-pill.github {
@@ -1331,7 +1400,7 @@ body.is-resizing {
   margin: 0;
   color: var(--ink);
   font-size: 0.9rem;
-  font-weight: 780;
+  font-weight: 600;
 }
 
 .active-skill small {
@@ -1375,7 +1444,7 @@ body.is-resizing {
 
 .segmented button {
   min-height: 40px;
-  font-weight: 720;
+  font-weight: 600;
 }
 
 .segmented button.is-selected,
@@ -1390,7 +1459,7 @@ body.is-resizing {
 .file-tree button.is-active {
   border-color: rgba(29, 158, 117, 0.42);
   box-shadow: inset 0 0 0 1px rgba(29, 158, 117, 0.14);
-  font-weight: 780;
+  font-weight: 600;
 }
 
 .drawer-actions {
@@ -1408,7 +1477,7 @@ body.is-resizing {
   justify-content: center;
   gap: 8px;
   padding: 0 12px;
-  font-weight: 720;
+  font-weight: 600;
 }
 
 .drawer-primary-command {
@@ -1475,7 +1544,7 @@ body.is-resizing {
   color: var(--accent-strong);
   padding: 2px 7px;
   font-size: 0.7rem;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .project-row-actions {
@@ -1488,7 +1557,7 @@ body.is-resizing {
   gap: 6px;
   padding: 0 10px;
   font-size: 0.78rem;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .project-open:disabled {
@@ -1524,7 +1593,7 @@ body.is-resizing {
   margin-right: auto;
   color: var(--danger);
   font-size: 0.78rem;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .project-confirm-cancel,
@@ -1534,7 +1603,7 @@ body.is-resizing {
   gap: 5px;
   padding: 0 8px;
   font-size: 0.76rem;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .project-confirm-delete {
@@ -1554,7 +1623,7 @@ body.is-resizing {
 
 .project-name {
   color: var(--ink);
-  font-weight: 720;
+  font-weight: 600;
 }
 
 .project-picker small {
@@ -1703,7 +1772,7 @@ body.is-resizing {
 .reference-open span {
   color: var(--ink);
   font-size: 0.76rem;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .reference-open small {
@@ -1782,7 +1851,7 @@ body.is-resizing {
 .reference-preview-heading p {
   color: var(--ink);
   font-size: 0.9rem;
-  font-weight: 760;
+  font-weight: 600;
 }
 
 .reference-preview-heading small {
@@ -1802,11 +1871,11 @@ body.is-resizing {
   border: 1px solid var(--line);
   border-radius: 8px;
   background:
-    linear-gradient(45deg, #22252d 25%, transparent 25%),
-    linear-gradient(-45deg, #22252d 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #22252d 75%),
-    linear-gradient(-45deg, transparent 75%, #22252d 75%),
-    #16181e;
+    linear-gradient(45deg, #ececea 25%, transparent 25%),
+    linear-gradient(-45deg, #ececea 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #ececea 75%),
+    linear-gradient(-45deg, transparent 75%, #ececea 75%),
+    #ffffff;
   background-position:
     0 0,
     0 8px,
@@ -1821,7 +1890,7 @@ body.is-resizing {
   align-content: center;
   justify-items: center;
   gap: 8px;
-  border: 1px dashed #2a2e37;
+  border: 1px dashed var(--line-strong);
   border-radius: 8px;
   background: var(--panel-soft);
   color: var(--muted);
@@ -1844,40 +1913,10 @@ body.is-resizing {
   }
 }
 
-.mobile-tabs {
-  display: none;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel);
-}
-
-.mobile-tabs button {
-  flex: 1;
-  min-height: 34px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 0.86rem;
-  font-weight: 640;
-  transition: background var(--ease), color var(--ease);
-}
-
-.mobile-tabs button.is-active {
-  background: var(--panel-strong);
-  color: var(--ink);
-}
-
-/* Compact header: icon-only actions, hide tagline */
+/* Compact header: icon-only actions */
 @media (max-width: 1024px) {
   .workspace-topbar {
     grid-template-columns: auto minmax(0, 1fr) auto;
-  }
-
-  .brand-copy h1 {
-    display: none;
   }
 
   .topbar-actions .quiet-command {
@@ -1889,39 +1928,29 @@ body.is-resizing {
   }
 }
 
-/* Tabbed layout: Chat / Preview one at a time, no page scroll */
+/* Narrow: the conversation becomes an overlay sheet; the canvas fills the width */
 @media (max-width: 900px) {
-  .app-shell {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto minmax(0, 1fr);
+  .chat-region {
+    position: fixed;
+    z-index: 35;
+    inset: 0 auto 0 0;
+    width: min(400px, calc(100vw - 40px));
+    border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
+    box-shadow: var(--shadow-pop);
   }
 
-  .workspace-topbar {
-    grid-row: 1;
+  .app-shell[data-chat-open="true"] .chat-backdrop {
+    display: block;
+    position: fixed;
+    z-index: 34;
+    inset: 0;
+    border: 0;
+    background: rgba(0, 0, 0, 0.18);
+    padding: 0;
   }
 
-  .pane-splitter {
-    display: none;
-  }
-
-  .mobile-tabs {
-    display: flex;
-    grid-column: 1;
-    grid-row: 2;
-  }
-
-  .chat-region,
-  .preview-region {
-    grid-column: 1;
-    grid-row: 3;
-  }
-
-  .app-shell[data-mobile-tab="chat"] .preview-region {
-    display: none;
-  }
-
-  .app-shell[data-mobile-tab="preview"] .chat-region {
-    display: none;
+  .command-dock {
+    width: 100%;
   }
 
   .side-drawer,
@@ -1933,16 +1962,31 @@ body.is-resizing {
 @media (max-width: 560px) {
   .app-shell {
     padding: 8px;
-    gap: 8px 8px;
+    gap: 8px;
   }
 
   .workspace-topbar {
-    gap: 8px;
+    grid-template-columns: auto minmax(64px, 1fr) auto;
+    gap: 6px;
     padding: 7px 9px;
   }
 
+  /* Keep only the brand mark; free room for the project pill + actions */
+  .brand-copy {
+    display: none;
+  }
+
   .topbar-project {
-    min-width: 110px;
+    min-width: 72px;
+  }
+
+  .topbar-actions {
+    gap: 4px;
+  }
+
+  .topbar-actions .quiet-command {
+    min-height: 34px;
+    padding: 0 8px;
   }
 
   .message {

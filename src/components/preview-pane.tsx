@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ExternalLink, Info, Loader2, MonitorPlay } from "lucide-react";
+import { AlertTriangle, ExternalLink, Info, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { openPreviewWindow } from "@/lib/client/preview-window";
@@ -108,14 +108,16 @@ export function PreviewPane({ files, references = [], isGenerating = false }: Pr
   }, [fileSignature, files, references, mockMode]);
 
   return (
-    <section className="workspace-region preview-region" aria-label="Preview">
-      <div className="region-bar">
-        <div className="region-title">
-          <MonitorPlay size={17} aria-hidden="true" />
-          <span>Preview</span>
-        </div>
+    <section className="preview-region" aria-label="Preview">
+      <div className="canvas-bar">
         <div className="preview-actions">
-          <span className="status-pill" data-tone={statusTone} data-testid="preview-status">
+          <span
+            className="status-pill"
+            data-tone={statusTone}
+            data-testid="preview-status"
+            role="status"
+            aria-live="polite"
+          >
             <span className="status-dot" aria-hidden="true" />
             <span className="status-label">{displayState.status}</span>
           </span>

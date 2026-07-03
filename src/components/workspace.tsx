@@ -17,6 +17,8 @@ import {
   KeyRound,
   Link2,
   Loader2,
+  MessagesSquare,
+  PanelLeftClose,
   Paperclip,
   RotateCcw,
   Send,
@@ -28,10 +30,7 @@ import {
 } from "lucide-react";
 import {
   ChangeEvent,
-  type CSSProperties,
   FormEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
   useEffect,
   useMemo,
   useRef,
@@ -95,11 +94,6 @@ const promptExamples = [
   "Tela de login acolhedora para um app financeiro",
 ];
 
-const CHAT_WIDTH_KEY = "telar.chatWidth";
-const CHAT_WIDTH_MIN = 320;
-const CHAT_WIDTH_MAX = 900;
-const SHELL_PADDING = 12;
-
 export function Workspace() {
   const [project, setProject] = useState<Project | null>(null);
   const [summaries, setSummaries] = useState<ProjectSummary[]>([]);
@@ -121,9 +115,7 @@ export function Workspace() {
   const apiKeyInputRef = useRef<HTMLInputElement>(null);
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const projectMenuRef = useRef<HTMLDivElement>(null);
-  const shellRef = useRef<HTMLElement>(null);
-  const [chatWidth, setChatWidth] = useState<number | null>(null);
-  const [mobileTab, setMobileTab] = useState<"chat" | "preview">("chat");
+  const [chatOpen, setChatOpen] = useState(false);
 
   const [cliAgents, setCliAgents] = useState<{ claude: boolean; codex: boolean }>({
     claude: false,
@@ -203,16 +195,6 @@ export function Workspace() {
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [projectMenuOpen]);
-
-  useEffect(() => {
-    // Persisted splitter width is only available client-side, so it must be read
-    // after mount rather than during render.
-    const saved = Number(window.localStorage.getItem(CHAT_WIDTH_KEY));
-    if (Number.isFinite(saved) && saved >= CHAT_WIDTH_MIN && saved <= CHAT_WIDTH_MAX) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setChatWidth(saved);
-    }
-  }, []);
 
   useEffect(() => {
     if (!activeDrawer) return;
@@ -300,46 +282,6 @@ export function Workspace() {
   function closeDrawer() {
     setActiveDrawer(null);
     setConfirmingDeleteId(null);
-  }
-
-  function clampChatWidth(width: number): number {
-    const shell = shellRef.current;
-    const viewportMax = shell ? shell.getBoundingClientRect().width * 0.62 : CHAT_WIDTH_MAX;
-    return Math.max(CHAT_WIDTH_MIN, Math.min(width, Math.min(CHAT_WIDTH_MAX, viewportMax)));
-  }
-
-  function handleSplitterPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    event.preventDefault();
-    const shell = shellRef.current;
-    if (!shell) return;
-
-    let latest = chatWidth ?? shell.querySelector(".chat-region")?.getBoundingClientRect().width ?? 420;
-
-    function onMove(moveEvent: PointerEvent) {
-      const rect = shell!.getBoundingClientRect();
-      latest = clampChatWidth(moveEvent.clientX - rect.left - SHELL_PADDING);
-      setChatWidth(latest);
-    }
-    function onUp() {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      document.body.classList.remove("is-resizing");
-      window.localStorage.setItem(CHAT_WIDTH_KEY, String(Math.round(latest)));
-    }
-
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    document.body.classList.add("is-resizing");
-  }
-
-  function handleSplitterKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-    const step = event.shiftKey ? 48 : 16;
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    event.preventDefault();
-    const base = chatWidth ?? shellRef.current?.querySelector(".chat-region")?.getBoundingClientRect().width ?? 420;
-    const next = clampChatWidth(event.key === "ArrowLeft" ? base - step : base + step);
-    setChatWidth(next);
-    window.localStorage.setItem(CHAT_WIDTH_KEY, String(Math.round(next)));
   }
 
   async function persist(nextProject: Project) {
@@ -633,12 +575,7 @@ export function Workspace() {
   }
 
   return (
-    <main
-      ref={shellRef}
-      className="app-shell"
-      data-mobile-tab={mobileTab}
-      style={chatWidth ? ({ "--chat-width": `${chatWidth}px` } as CSSProperties) : undefined}
-    >
+    <main className="app-shell" data-chat-open={chatOpen}>
       <input
         ref={referenceInputRef}
         className="sr-only"
@@ -654,7 +591,6 @@ export function Workspace() {
           <TelarMark className="brand-mark" />
           <div className="brand-copy">
             <p>Telar</p>
-            <h1>Crie telas descrevendo o que voce precisa</h1>
           </div>
         </div>
 
@@ -724,52 +660,59 @@ export function Workspace() {
           </div>
         </div>
 
-        <nav className="topbar-actions" aria-label="Acoes do projeto">
+        <nav className="topbar-actions" aria-label="Ações do projeto">
+          <button
+            className={`quiet-command chat-toggle ${chatOpen ? "is-active" : ""}`}
+            type="button"
+            aria-pressed={chatOpen}
+            aria-label={chatOpen ? "Recolher conversa" : "Abrir conversa"}
+            onClick={() => setChatOpen((open) => !open)}
+          >
+            <MessagesSquare size={16} aria-hidden="true" />
+            <span>Conversa</span>
+          </button>
           <button className="quiet-command" type="button" onClick={() => openDrawer("projects")}>
             <FolderKanban size={16} aria-hidden="true" />
             <span>Projetos</span>
-          </button>
-          <button className="quiet-command" type="button" onClick={() => openDrawer("settings")}>
-            <Settings size={16} aria-hidden="true" />
-            <span>Configurações</span>
           </button>
           <button className="quiet-command" type="button" onClick={() => openDrawer("files")}>
             <FolderOpen size={16} aria-hidden="true" />
             <span>Arquivos</span>
           </button>
+          <button className="quiet-command" type="button" onClick={() => openDrawer("settings")}>
+            <Settings size={16} aria-hidden="true" />
+            <span>Configurações</span>
+          </button>
         </nav>
       </header>
 
-      <div className="mobile-tabs" role="tablist" aria-label="Painéis">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mobileTab === "chat"}
-          className={mobileTab === "chat" ? "is-active" : ""}
-          onClick={() => setMobileTab("chat")}
-        >
-          Chat
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mobileTab === "preview"}
-          className={mobileTab === "preview" ? "is-active" : ""}
-          onClick={() => setMobileTab("preview")}
-        >
-          Preview
-        </button>
-      </div>
+      <div className="workspace-body">
+        {chatOpen ? (
+          <button
+            className="chat-backdrop"
+            type="button"
+            aria-label="Recolher conversa"
+            onClick={() => setChatOpen(false)}
+          />
+        ) : null}
 
-      <section className="workspace-region chat-region" aria-label="Chat">
-        <div className="region-bar chat-bar">
-          <div className="region-title">
-            <Sparkles size={17} aria-hidden="true" />
-            <span>Chat</span>
+        <aside className="chat-region" aria-label="Chat">
+          <div className="region-bar chat-bar">
+            <div className="region-title">
+              <MessagesSquare size={17} aria-hidden="true" />
+              <span>Conversa</span>
+            </div>
+            <button
+              className="icon-only chat-collapse"
+              type="button"
+              aria-label="Recolher conversa"
+              onClick={() => setChatOpen(false)}
+            >
+              <PanelLeftClose size={17} aria-hidden="true" />
+            </button>
           </div>
-        </div>
 
-        <div className="message-list" aria-label="Conversa">
+          <div className="message-list" aria-label="Conversa">
           {project.messages.length === 0 ? (
             <div className="empty-chat">
               <Bot size={22} aria-hidden="true" />
@@ -812,41 +755,46 @@ export function Workspace() {
           ) : null}
         </div>
 
-        {notice ? (
-          <p className="notice" role="alert">
-            {notice}
-          </p>
-        ) : null}
+          {notice ? (
+            <p className="notice" role="alert">
+              {notice}
+            </p>
+          ) : null}
 
-        {referenceNotice && activeDrawer !== "files" ? (
-          <p className="notice reference-chat-notice" role="alert">
-            {referenceNotice}
-          </p>
-        ) : null}
+          {referenceNotice && activeDrawer !== "files" ? (
+            <p className="notice reference-chat-notice" role="alert">
+              {referenceNotice}
+            </p>
+          ) : null}
+        </aside>
 
-        <form className="prompt-form" onSubmit={handleGenerate}>
-          <label className="prompt-label" htmlFor="prompt">
-            Descreva a tela que voce quer criar
-          </label>
-          <textarea
-            id="prompt"
-            aria-label="Descreva a tela que você quer criar"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="Ex.: uma pagina de vendas com planos, depoimentos e botao de contato..."
-            rows={5}
-          />
-          <div className="prompt-actions">
+        <div className="canvas">
+          <PreviewPane files={project.files} references={project.references} isGenerating={isGenerating} />
+
+          <form className="command-dock" onSubmit={handleGenerate}>
+            <label className="sr-only" htmlFor="prompt">
+              Descreva a tela que você quer criar
+            </label>
             <button
-              className="secondary-command attach-command"
+              className="dock-attach"
               type="button"
+              aria-label="Anexar referências"
               onClick={() => referenceInputRef.current?.click()}
               disabled={isGenerating}
             >
-              <Paperclip size={17} aria-hidden="true" />
-              <span>Anexar</span>
+              <Paperclip size={18} aria-hidden="true" />
             </button>
-            <button className="primary-command" type="submit" disabled={isGenerating}>
+            <textarea
+              id="prompt"
+              className="dock-input"
+              aria-label="Descreva a tela que você quer criar"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="Ex.: uma pagina de vendas com planos, depoimentos e botao de contato..."
+              rows={2}
+              disabled={isGenerating}
+            />
+            <button className="primary-command dock-generate" type="submit" disabled={isGenerating}>
               {isGenerating ? (
                 <Loader2 className="spin" size={17} aria-hidden="true" />
               ) : (
@@ -854,23 +802,9 @@ export function Workspace() {
               )}
               <span>{isGenerating ? "Generating" : "Generate"}</span>
             </button>
-          </div>
-        </form>
-      </section>
-
-      <div
-        className="pane-splitter"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Redimensionar painéis"
-        tabIndex={0}
-        onPointerDown={handleSplitterPointerDown}
-        onKeyDown={handleSplitterKeyDown}
-      >
-        <span className="pane-splitter-grip" aria-hidden="true" />
+          </form>
+        </div>
       </div>
-
-      <PreviewPane files={project.files} references={project.references} isGenerating={isGenerating} />
 
       {activeDrawer ? (
         <>
@@ -1302,6 +1236,7 @@ function MessageItem({
 
   return (
     <article className={`message ${message.role} ${message.error ? "error" : ""}`}>
+      {message.role === "user" ? <span className="message-label">Você</span> : null}
       {message.role === "assistant" && !message.error ? (
         <div className="message-seal">
           <TelarMark size={15} title="Telar" />
