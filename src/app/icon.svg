@@ -4,9 +4,21 @@
       <stop stop-color="#13897a"/>
       <stop offset="1" stop-color="#0b544a"/>
     </linearGradient>
+    <linearGradient id="telar-weft" x1="7" y1="20" x2="33" y2="20" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f4c65a"/>
+      <stop offset="1" stop-color="#e0a12f"/>
+    </linearGradient>
   </defs>
   <rect x="0.5" y="0.5" width="39" height="39" rx="9.5" fill="url(#telar-tile)"/>
-  <path d="M11 13.5h18" stroke="#fff" stroke-width="3.1" stroke-linecap="round"/>
-  <path d="M20 13.5v8.5" stroke="#fff" stroke-width="3.1" stroke-linecap="round"/>
-  <path d="M20 21.4l8.4 3.5-3.4 1.1 1.9 4.1-2.4 1.1-1.9-4.1-2.6 2.2z" fill="#fff" stroke="url(#telar-tile)" stroke-width="0.6" stroke-linejoin="round"/>
+  <g stroke="#fff" stroke-width="2.8" stroke-linecap="round">
+    <path d="M11 8v24"/>
+    <path d="M17 8v24"/>
+    <path d="M23 8v24"/>
+    <path d="M29 8v24"/>
+  </g>
+  <path d="M7 20 Q11 15 14 20 Q17 25 20 20 Q23 15 26 20 Q29 25 33 20" fill="none" stroke="url(#telar-weft)" stroke-width="3" stroke-linecap="round"/>
+  <g stroke="#fff" stroke-width="2.8" stroke-linecap="round">
+    <path d="M17 20v6"/>
+    <path d="M29 20v6"/>
+  </g>
 </svg>

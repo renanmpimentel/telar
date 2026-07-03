@@ -5,8 +5,9 @@ interface TelarMarkProps {
 }
 
 /**
- * Telar brand mark: a rounded tile with a monogram "T" whose stroke (traço) ends
- * in a design cursor — the app draws screens the way you point and sketch.
+ * Telar brand mark: an emerald tile holding a small loom — four white warp
+ * threads with a single golden weft thread woven over and under them. The name
+ * "Telar" means loom; the tool weaves screens the way a loom weaves cloth.
  */
 export function TelarMark({ className, size = 34, title = "Telar" }: TelarMarkProps) {
   return (
@@ -24,20 +25,36 @@ export function TelarMark({ className, size = 34, title = "Telar" }: TelarMarkPr
           <stop stopColor="#13897a" />
           <stop offset="1" stopColor="#0b544a" />
         </linearGradient>
+        <linearGradient id="telar-weft" x1="7" y1="20" x2="33" y2="20" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#f4c65a" />
+          <stop offset="1" stopColor="#e0a12f" />
+        </linearGradient>
       </defs>
+
       <rect x="0.5" y="0.5" width="39" height="39" rx="9.5" fill="url(#telar-tile)" />
-      {/* T bar — the stroke */}
-      <path d="M11 13.5h18" stroke="#fff" strokeWidth="3.1" strokeLinecap="round" />
-      {/* T stem */}
-      <path d="M20 13.5v8.5" stroke="#fff" strokeWidth="3.1" strokeLinecap="round" />
-      {/* cursor resting at the end of the stroke */}
+
+      {/* Warp — four vertical threads */}
+      <g stroke="#fff" strokeWidth="2.8" strokeLinecap="round">
+        <path d="M11 8v24" />
+        <path d="M17 8v24" />
+        <path d="M23 8v24" />
+        <path d="M29 8v24" />
+      </g>
+
+      {/* Weft — a single golden thread woven through the warp */}
       <path
-        d="M20 21.4l8.4 3.5-3.4 1.1 1.9 4.1-2.4 1.1-1.9-4.1-2.6 2.2z"
-        fill="#fff"
-        stroke="url(#telar-tile)"
-        strokeWidth="0.6"
-        strokeLinejoin="round"
+        d="M7 20 Q11 15 14 20 Q17 25 20 20 Q23 15 26 20 Q29 25 33 20"
+        fill="none"
+        stroke="url(#telar-weft)"
+        strokeWidth="3"
+        strokeLinecap="round"
       />
+
+      {/* Restore the warp over the weft where the thread dips under */}
+      <g stroke="#fff" strokeWidth="2.8" strokeLinecap="round">
+        <path d="M17 20v6" />
+        <path d="M29 20v6" />
+      </g>
     </svg>
   );
 }
