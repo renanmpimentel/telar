@@ -1,3 +1,4 @@
+import type { Locale } from "@/lib/i18n/dictionaries";
 import { createDefaultProjectFiles } from "@/lib/project/template";
 import {
   createDefaultGenerationSkill,
@@ -11,7 +12,7 @@ const PROJECT_STORE = "projects";
 const PROVIDER_STORAGE_KEY = "telar.provider";
 const ACTIVE_PROJECT_KEY = "telar.activeProjectId";
 
-export function createProject(name = "Untitled Project"): Project {
+export function createProject(name = "Untitled Project", locale: Locale = "en"): Project {
   const now = new Date().toISOString();
 
   return {
@@ -19,7 +20,7 @@ export function createProject(name = "Untitled Project"): Project {
     name,
     createdAt: now,
     updatedAt: now,
-    files: createDefaultProjectFiles(),
+    files: createDefaultProjectFiles(locale),
     messages: [],
     references: [],
     generationSkill: createDefaultGenerationSkill(),

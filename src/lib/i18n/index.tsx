@@ -10,9 +10,9 @@ import {
   type ReactNode,
 } from "react";
 
-import { dictionaries, en, type TranslationKey } from "@/lib/i18n/dictionaries";
+import { dictionaries, en, type Locale, type TranslationKey } from "@/lib/i18n/dictionaries";
 
-export type Locale = "en" | "pt";
+export type { Locale };
 export const LOCALES: Locale[] = ["en", "pt"];
 export const LOCALE_STORAGE_KEY = "telar.locale";
 

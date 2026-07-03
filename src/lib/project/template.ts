@@ -1,6 +1,8 @@
+import { dictionaries, type Locale } from "@/lib/i18n/dictionaries";
 import type { ProjectFileMap } from "@/lib/project/types";
 
-export function createDefaultProjectFiles(): ProjectFileMap {
+export function createDefaultProjectFiles(locale: Locale = "en"): ProjectFileMap {
+  const d = dictionaries[locale];
   return {
     "package.json": JSON.stringify(
       {
@@ -90,7 +92,7 @@ class PreviewErrorBoundary extends React.Component<
             background: "#fef2f2",
           }}
         >
-          <strong>Erro ao renderizar a tela gerada</strong>
+          <strong>${d["template.errorTitle"]}</strong>
           <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{this.state.error.message}</pre>
         </div>
       );
@@ -113,11 +115,8 @@ createRoot(document.getElementById("root")!).render(
     <main className="shell">
       <section className="panel">
         <p className="eyebrow">Telar</p>
-        <h1>Start by asking the assistant for a UI.</h1>
-        <p>
-          Generated React files will replace this starter screen while the Vite
-          preview keeps the last valid project state.
-        </p>
+        <h1>${d["template.title"]}</h1>
+        <p>${d["template.body"]}</p>
       </section>
     </main>
   );

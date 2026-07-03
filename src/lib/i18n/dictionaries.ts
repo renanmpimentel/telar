@@ -116,9 +116,16 @@ export const en = {
   "examples.0": "Landing page for a neighborhood coffee shop",
   "examples.1": "Simple sales dashboard with cards and a chart",
   "examples.2": "Warm login screen for a finance app",
+
+  // Rendered inside the preview (webview): the starter screen and error boundary.
+  "template.title": "Start by asking the assistant for a UI.",
+  "template.body":
+    "Generated React files will replace this starter screen while the Vite preview keeps the last valid project state.",
+  "template.errorTitle": "Error rendering the generated screen",
 } as const;
 
 export type TranslationKey = keyof typeof en;
+export type Locale = keyof typeof dictionaries;
 
 export const pt: Record<TranslationKey, string> = {
   "boot.opening": "Abrindo o projeto",
@@ -235,6 +242,11 @@ export const pt: Record<TranslationKey, string> = {
   "examples.0": "Landing page para uma cafeteria de bairro",
   "examples.1": "Dashboard simples de vendas com cards e gráfico",
   "examples.2": "Tela de login acolhedora para um app financeiro",
+
+  "template.title": "Comece pedindo uma tela ao assistente.",
+  "template.body":
+    "Os arquivos React gerados vão substituir esta tela inicial enquanto o preview do Vite mantém o último estado válido do projeto.",
+  "template.errorTitle": "Erro ao renderizar a tela gerada",
 };
 
 export const dictionaries = { en, pt } as const;

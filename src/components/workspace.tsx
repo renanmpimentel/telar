@@ -40,9 +40,10 @@ import {
 import { PreviewPane } from "@/components/preview-pane";
 import { TelarMark } from "@/components/telar-mark";
 import { handleGenerateClientError } from "@/lib/client/errors";
-import { LOCALE_LABELS, LOCALES, useI18n } from "@/lib/i18n";
+import { LOCALE_LABELS, LOCALES, detectLocale, useI18n } from "@/lib/i18n";
 import { downloadProjectZip } from "@/lib/export/zip";
 import { applyGeneratedChange } from "@/lib/project/apply-files";
+import { createDefaultProjectFiles } from "@/lib/project/template";
 import {
   createDefaultGenerationSkill,
   isGithubGenerationSkill,
@@ -145,7 +146,7 @@ export function Workspace() {
       }
 
       if (!activeProject) {
-        activeProject = await saveProject(createProject());
+        activeProject = await saveProject(createProject(undefined, detectLocale()));
       }
 
       if (cancelled) return;
@@ -250,6 +251,25 @@ export function Workspace() {
     };
   }, []);
 
+  useEffect(() => {
+    // Keep the starter screen shown inside the preview (webview) in the tool's
+    // language — but only while the project is untouched (no generations yet), so
+    // we never overwrite the user's own work.
+    if (!project || project.versions.length > 0 || project.messages.length > 0) return;
+    const localized = createDefaultProjectFiles(locale);
+    if (
+      project.files["src/App.tsx"] === localized["src/App.tsx"] &&
+      project.files["src/main.tsx"] === localized["src/main.tsx"]
+    ) {
+      return;
+    }
+    const next: Project = { ...project, files: localized, updatedAt: new Date().toISOString() };
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setProject(next);
+    void saveProject(next).then(() => refreshSummaries());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locale, project?.id, project?.versions.length, project?.messages.length]);
+
   const filePaths = useMemo(() => {
     return Object.keys(project?.files ?? {}).sort((a, b) => a.localeCompare(b));
   }, [project?.files]);
@@ -291,7 +311,7 @@ export function Workspace() {
   }
 
   async function handleNewProject() {
-    const nextProject = await saveProject(createProject("Untitled Project"));
+    const nextProject = await saveProject(createProject("Untitled Project", locale));
     setProject(nextProject);
     setSelectedPath("src/App.tsx");
     saveActiveProjectId(nextProject.id);
@@ -317,7 +337,7 @@ export function Workspace() {
     }
 
     if (!nextProject) {
-      nextProject = await saveProject(createProject());
+      nextProject = await saveProject(createProject(undefined, locale));
     }
 
     setProject(nextProject);
