@@ -1,137 +1,128 @@
-# figma-fake
+<div align="center">
 
-`figma-fake` e um studio local-first para gerar, editar, visualizar e exportar
-interfaces React a partir de prompts. A ideia e aproximar o fluxo de um canvas
-de design: voce descreve a tela, anexa referencias quando precisar, escolhe o
-provedor de IA e acompanha o resultado em uma preview executavel.
+<img src="docs/telar-mark.svg" alt="Telar" width="96" height="96" />
 
-O app usa Next.js na interface principal e gera um projeto Vite + React +
-TypeScript dentro do workspace de cada projeto. Os projetos ficam salvos no
-IndexedDB do navegador, e a chave de API e fornecida pelo usuario em modo BYOK
-(bring your own key).
+# Telar
 
-## O que o app faz
+**A local-first AI workspace for generating, editing, previewing and exporting React interfaces from a prompt.**
 
-- Gera alteracoes completas para projetos Vite + React + TypeScript.
-- Suporta OpenAI e Anthropic, com modelo configuravel por usuario.
-- Mantem multiplos projetos locais com historico de conversa e arquivos.
-- Executa a preview no navegador com WebContainer.
-- Permite anexar referencias de texto, imagem e PDF para orientar a geracao.
-- Exporta o projeto como ZIP, incluindo referencias permitidas.
-- Permite trocar a skill de geracao por projeto:
-  - padrao embutido: `frontend-design`;
-  - customizada: URL publica do GitHub apontando diretamente para `SKILL.md`.
-- Suporta tambem os binarios locais `claude` e `codex` como provedores (modo CLI), usando a autenticacao da propria CLI, sem API key.
+_Telar_ is Portuguese for _loom_ — you describe a screen and it weaves the code, live.
 
-## Requisitos
+[English](README.md) · [Português](README.pt-BR.md)
 
-- Node.js 24 ou compativel com as dependencias atuais.
-- npm.
-- Um navegador moderno. Para preview com WebContainer, Chrome/Chromium tende a
-  ser a opcao mais confiavel.
-- Uma chave de API da OpenAI ou Anthropic para usar a geracao real.
+[![License: MIT](https://img.shields.io/badge/License-MIT-0f766e.svg)](LICENSE)
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org)
+[![React](https://img.shields.io/badge/React-19-149eca?logo=react&logoColor=white)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Tested with Vitest](https://img.shields.io/badge/tested%20with-Vitest-6da13f?logo=vitest&logoColor=white)](https://vitest.dev)
+[![E2E: Playwright](https://img.shields.io/badge/e2e-Playwright-2ead33?logo=playwright&logoColor=white)](https://playwright.dev)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-0f766e.svg)](#contributing)
+[![Local-first](https://img.shields.io/badge/local--first-%E2%9C%94-0f766e.svg)](#why-telar)
+[![i18n](https://img.shields.io/badge/i18n-en%20%C2%B7%20pt-0f766e.svg)](#internationalization)
+[![Last commit](https://img.shields.io/github/last-commit/renanmpimentel/figma-fake?color=0f766e)](https://github.com/renanmpimentel/figma-fake/commits)
+[![Stars](https://img.shields.io/github/stars/renanmpimentel/figma-fake?style=social)](https://github.com/renanmpimentel/figma-fake/stargazers)
 
-## Subindo localmente
+</div>
 
-Instale as dependencias:
+---
+
+## Why Telar
+
+Telar brings the flow of a design canvas to code generation: describe the screen, attach references when you need them, and watch a real React app render in a live preview. Everything runs **local-first** — your projects live in the browser (IndexedDB), and you bring your own AI key or a local CLI. Nothing is uploaded to a Telar backend.
+
+## Features
+
+- 🧵 **Prompt to UI** — describe a screen and get a complete, editable React project.
+- 👀 **Live preview** — the generated app runs in-browser via [WebContainers](https://webcontainers.io), with a lightweight mock mode for tests.
+- 🗂️ **Projects** — create, switch, rename and delete projects; each keeps its own conversation and version history.
+- ⏪ **Versions** — every generation is a restorable snapshot.
+- 📎 **References** — attach text and image files to guide generation.
+- 🧠 **Bring your own AI** — OpenAI, Anthropic (Claude), or a local **Claude CLI** / **Codex CLI** binary (no API key needed).
+- ✍️ **Generation skills** — ships with a `frontend-design` skill or loads a custom one from a public GitHub `SKILL.md`.
+- 📦 **Export** — download the whole project as a ZIP.
+- 🌐 **Internationalization** — English and Portuguese, auto-detected and switchable.
+- 🎨 **Calm, light UI** — a "Canvas + Dock" layout that keeps the preview center stage.
+
+## Tech stack
+
+- [Next.js 16](https://nextjs.org) (App Router) · [React 19](https://react.dev) · [TypeScript](https://www.typescriptlang.org)
+- [WebContainers](https://webcontainers.io) for the in-browser preview runtime
+- [Zod](https://zod.dev) for schema validation · [JSZip](https://stuk.github.io/jszip/) for export
+- [Vitest](https://vitest.dev) (unit) · [Playwright](https://playwright.dev) (e2e)
+- Plain CSS with design tokens — no UI framework
+
+## Getting started
+
+**Requirements:** Node.js 20+ and npm.
 
 ```bash
-npm ci
-```
-
-Rode o servidor de desenvolvimento:
-
-```bash
+git clone https://github.com/renanmpimentel/figma-fake.git
+cd figma-fake
+npm install
 npm run dev
 ```
 
-Abra:
+Open <http://localhost:3000>. Open **Settings** to pick an AI provider and paste your API key (or select a detected local CLI).
 
-```text
-http://localhost:3000
-```
-
-Na tela de Configuracoes, cole sua API key, escolha o provedor/modelo e gere a
-primeira interface. A API key fica apenas em memoria no cliente durante a sessao;
-as preferencias persistidas salvam provedor/modelo, nao a chave.
-
-## Subindo com Docker Compose
-
-Construa e suba o container:
+### With Docker
 
 ```bash
-docker compose up --build
+docker compose up
 ```
 
-Abra:
+### Environment variables
 
-```text
-http://localhost:3000
+All are optional:
+
+| Variable | Purpose |
+| --- | --- |
+| `NEXT_PUBLIC_PREVIEW_MODE` | Set to `mock` to render a lightweight preview without WebContainers (used in tests). |
+| `TELAR_CLI_TIMEOUT_MS` | Timeout for local CLI generation (default `300000` = 5 min). |
+| `TELAR_CLAUDE_BIN` | Path/name of the Claude CLI binary (default `claude`). |
+| `TELAR_CODEX_BIN` | Path/name of the Codex CLI binary (default `codex`). |
+
+## AI providers
+
+Telar is **BYOK** (bring your own key). In **Settings → AI service** you can choose:
+
+- **OpenAI** or **Claude** — paste an API key; the request is sent to the provider directly from the route handler.
+- **Claude CLI** / **Codex CLI** — used automatically when the binary is detected on your `PATH`; runs locally, no API key. The CLI uses its own default model, so set a faster one in the **Model** field to speed things up.
+
+## Internationalization
+
+The UI ships in **English** and **Portuguese**. The locale is auto-detected from the browser (falling back to English) and can be changed any time in **Settings → Language**; the choice is persisted locally. Strings live in [`src/lib/i18n/dictionaries.ts`](src/lib/i18n/dictionaries.ts) — add a locale by mirroring the `en` map.
+
+## Scripts
+
+| Script | Description |
+| --- | --- |
+| `npm run dev` | Start the dev server |
+| `npm run build` | Production build |
+| `npm run start` | Serve the production build |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | TypeScript, no emit |
+| `npm test` | Unit tests (Vitest) |
+| `npm run test:e2e` | End-to-end tests (Playwright) |
+
+## Project structure
+
+```
+src/
+  app/            Next.js routes, layout, global styles, favicon
+  components/     Workspace, preview pane, brand mark
+  lib/
+    ai/           Provider dispatch + CLI agent
+    i18n/         Dictionaries, provider and hook
+    preview/      WebContainer runtime + module cache
+    project/      Types, templates, references, generation skills
+    storage/      Local (IndexedDB) project persistence
+    export/       ZIP export
 ```
 
-Para parar:
+## Contributing
 
-```bash
-docker compose down
-```
+Contributions are welcome! Please open an issue to discuss substantial changes first. Before opening a PR, run `npm run lint`, `npm run typecheck` and `npm test`.
 
-## Modo CLI (claude / codex)
+## License
 
-Se os binarios `claude` (Claude Code) ou `codex` (OpenAI Codex) estiverem no
-PATH da maquina que roda o Next, eles aparecem como provedores em Configuracoes.
-O modo CLI usa a autenticacao da propria ferramenta (sua assinatura), nao precisa
-de API key e o modelo e opcional. Para apontar um caminho customizado use as
-variaveis de ambiente `LIKE_FIGMA_CLAUDE_BIN` e `LIKE_FIGMA_CODEX_BIN`.
-
-Observacao: o modo CLI recebe apenas texto no prompt; referencias de imagem/PDF
-entram somente como metadado.
-
-## Comandos uteis
-
-```bash
-npm run lint
-npm run typecheck
-npm test
-npm run build
-npm run test:e2e
-npm audit --omit=dev
-```
-
-O projeto tambem usa Playwright para o fluxo E2E principal. Em testes, a preview
-pode ser colocada em modo mock via `localStorage` para evitar depender do
-WebContainer.
-
-## Como usar skills de geracao
-
-Cada projeto tem uma skill ativa. Por padrao, o app usa `frontend-design`, uma
-instrucao embutida para gerar interfaces mais bem acabadas.
-
-Para usar uma skill publica do GitHub:
-
-1. Abra Configuracoes.
-2. Cole uma URL `https://github.com/.../blob/.../SKILL.md` ou
-   `https://raw.githubusercontent.com/.../SKILL.md`.
-3. Clique em `Carregar skill`.
-
-O servidor valida o host, normaliza URLs `github.com/.../blob/...` para raw,
-baixa apenas conteudo textual publico, limita o arquivo a 100KB e nao usa token.
-Repositorios privados, assets e scripts de skills Codex nao sao executados.
-
-## Estrutura principal
-
-```text
-src/app/                 Rotas Next.js e endpoints server-side
-src/components/          Workspace e preview
-src/lib/ai/              Integracao com provedores e montagem de prompt
-src/lib/project/         Tipos, paths, referencias, templates e skills
-src/lib/storage/         Persistencia local em IndexedDB/localStorage
-src/lib/preview/         Runtime WebContainer
-tests/e2e/               Testes Playwright
-```
-
-## Observacoes de seguranca
-
-- Nao commitar chaves, tokens ou arquivos `.env` reais.
-- Preferir `.env.example` quando variaveis de ambiente forem adicionadas.
-- Antes de concluir mudancas, rode lint, typecheck, testes, build, E2E, audit e
-  um scan basico de padroes de segredo.
+[MIT](LICENSE) © Renan Pimentel
