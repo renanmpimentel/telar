@@ -141,13 +141,17 @@ export function PreviewPane({ files, references = [], isGenerating = false }: Pr
             <p>{displayState.error}</p>
           </div>
         ) : displayState.mode === "webcontainer" && displayState.url ? (
-          <iframe
-            title="Project preview"
-            src={appendReloadParam(displayState.url, reloadNonce)}
-            className="preview-frame"
-          />
+          <div className="preview-doc">
+            <iframe
+              title="Project preview"
+              src={appendReloadParam(displayState.url, reloadNonce)}
+              className="preview-frame"
+            />
+          </div>
         ) : displayState.mode === "mock" ? (
-          <iframe title="Project preview" srcDoc={displayState.srcDoc} className="preview-frame" />
+          <div className="preview-doc">
+            <iframe title="Project preview" srcDoc={displayState.srcDoc} className="preview-frame" />
+          </div>
         ) : (
           <div className="preview-message">
             <Loader2 className="spin" size={24} aria-hidden="true" />
@@ -222,8 +226,8 @@ function buildMockPreviewDoc(files: ProjectFileMap): string {
     <meta charset="utf-8" />
     <style>
       ${css}
-      body { min-height: 100vh; }
-      .mock-root { min-height: 100vh; }
+      html, body { height: 100%; margin: 0; }
+      .mock-root { min-height: 100%; display: flow-root; }
       .mock-source { position: fixed; inset: auto 16px 16px 16px; max-height: 38vh; overflow: auto; border: 1px solid #d8d1c2; background: rgba(255,255,255,.86); color: #171717; padding: 12px; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
     </style>
   </head>
