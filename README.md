@@ -19,8 +19,8 @@ _Telar_ is Portuguese for _loom_ — you describe a screen and it weaves the cod
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-0f766e.svg)](#contributing)
 [![Local-first](https://img.shields.io/badge/local--first-%E2%9C%94-0f766e.svg)](#why-telar)
 [![i18n](https://img.shields.io/badge/i18n-en%20%C2%B7%20pt-0f766e.svg)](#internationalization)
-[![Last commit](https://img.shields.io/github/last-commit/renanmpimentel/figma-fake?color=0f766e)](https://github.com/renanmpimentel/figma-fake/commits)
-[![Stars](https://img.shields.io/github/stars/renanmpimentel/figma-fake?style=social)](https://github.com/renanmpimentel/figma-fake/stargazers)
+[![Last commit](https://img.shields.io/github/last-commit/renanmpimentel/telar?color=0f766e)](https://github.com/renanmpimentel/telar/commits)
+[![Stars](https://img.shields.io/github/stars/renanmpimentel/telar?style=social)](https://github.com/renanmpimentel/telar/stargazers)
 
 </div>
 
@@ -56,8 +56,8 @@ Telar brings the flow of a design canvas to code generation: describe the screen
 **Requirements:** Node.js 20+ and npm.
 
 ```bash
-git clone https://github.com/renanmpimentel/figma-fake.git
-cd figma-fake
+git clone https://github.com/renanmpimentel/telar.git
+cd telar
 npm install
 npm run dev
 ```

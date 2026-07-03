@@ -19,8 +19,8 @@ _Telar_ é o tear da tecelagem — você descreve uma tela e ele tece o código,
 [![PRs bem-vindos](https://img.shields.io/badge/PRs-bem--vindos-0f766e.svg)](#contribuindo)
 [![Local-first](https://img.shields.io/badge/local--first-%E2%9C%94-0f766e.svg)](#por-que-telar)
 [![i18n](https://img.shields.io/badge/i18n-en%20%C2%B7%20pt-0f766e.svg)](#internacionalização)
-[![Último commit](https://img.shields.io/github/last-commit/renanmpimentel/figma-fake?color=0f766e)](https://github.com/renanmpimentel/figma-fake/commits)
-[![Stars](https://img.shields.io/github/stars/renanmpimentel/figma-fake?style=social)](https://github.com/renanmpimentel/figma-fake/stargazers)
+[![Último commit](https://img.shields.io/github/last-commit/renanmpimentel/telar?color=0f766e)](https://github.com/renanmpimentel/telar/commits)
+[![Stars](https://img.shields.io/github/stars/renanmpimentel/telar?style=social)](https://github.com/renanmpimentel/telar/stargazers)
 
 </div>
 
@@ -56,8 +56,8 @@ O Telar traz o fluxo de um canvas de design para a geração de código: descrev
 **Requisitos:** Node.js 20+ e npm.
 
 ```bash
-git clone https://github.com/renanmpimentel/figma-fake.git
-cd figma-fake
+git clone https://github.com/renanmpimentel/telar.git
+cd telar
 npm install
 npm run dev
 ```

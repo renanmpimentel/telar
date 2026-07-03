@@ -1,0 +1,607 @@
+=== COMMITS 823dc92..HEAD ===
+827d733 feat: extend schema and dispatch CLI providers
+
+=== DIFF STAT ===
+src/components/workspace.tsx | 10 ++++++
+ src/lib/ai/generate.test.ts  | 36 +++++++++++++++++++++-
+ src/lib/ai/generate.ts       | 73 +++++++++++++++++++++++++++++++++++---------
+ src/lib/project/types.ts     |  2 +-
+ 4 files changed, 105 insertions(+), 16 deletions(-)
+
+=== DIFF -U10 ===
+src/components/workspace.tsx | 10 ++++++
+ src/lib/ai/generate.test.ts  | 36 +++++++++++++++++++++-
+ src/lib/ai/generate.ts       | 73 +++++++++++++++++++++++++++++++++++---------
+ src/lib/project/types.ts     |  2 +-
+ 4 files changed, 105 insertions(+), 16 deletions(-)
+
+diff --git a/src/components/workspace.tsx b/src/components/workspace.tsx
+index e2c67a8..e96f085 100644
+--- a/src/components/workspace.tsx
++++ b/src/components/workspace.tsx
+@@ -62,20 +62,22 @@ import {
+   loadProject,
+   loadProviderPreferences,
+   saveActiveProjectId,
+   saveProject,
+   saveProviderPreferences,
+ } from "@/lib/storage/projects";
+ 
+ const DEFAULT_MODELS: Record<ProviderId, string> = {
+   openai: "gpt-5-mini",
+   anthropic: "claude-sonnet-4-5",
++  "claude-cli": "",
++  "codex-cli": "",
+ };
+ 
+ type ActiveDrawer = "settings" | "files" | "projects" | null;
+ type SkillNotice = { tone: "success" | "error"; message: string };
+ 
+ const promptExamples = [
+   "Landing page para uma cafeteria de bairro",
+   "Dashboard simples de vendas com cards e grafico",
+   "Tela de login acolhedora para um app financeiro",
+ ];
+@@ -255,20 +257,28 @@ export function Workspace() {
+     const prompt = draft.trim();
+     if (!prompt) return;
+ 
+     if (!apiKey.trim()) {
+       openDrawer("settings");
+       setSettingsNotice("Adicione sua chave de API para criar a tela.");
+       setNotice(null);
+       return;
+     }
+ 
++    const isHttpProvider = provider === "openai" || provider === "anthropic";
++    if (isHttpProvider && !apiKey.trim()) {
++      openDrawer("settings");
++      setSettingsNotice("Adicione sua chave de API para criar a tela.");
++      setNotice(null);
++      return;
++    }
++
+     setNotice(null);
+     setSettingsNotice(null);
+     setReferenceNotice(null);
+     setDraft("");
+     setIsGenerating(true);
+ 
+     const userMessage = createMessage("user", prompt);
+     setProject({ ...project, messages: [...project.messages, userMessage] });
+ 
+     try {
+diff --git a/src/lib/ai/generate.test.ts b/src/lib/ai/generate.test.ts
+index a48957f..3eac2d9 100644
+--- a/src/lib/ai/generate.test.ts
++++ b/src/lib/ai/generate.test.ts
+@@ -1,13 +1,13 @@
+ import { describe, expect, it, vi } from "vitest";
+ 
+-import { handleGenerateRequest } from "@/lib/ai/generate";
++import { GenerateRequestError, handleGenerateRequest } from "@/lib/ai/generate";
+ import { createDefaultProjectFiles } from "@/lib/project/template";
+ import type { ProjectReference } from "@/lib/project/types";
+ 
+ const request = {
+   provider: "openai" as const,
+   apiKey: "test-key",
+   model: "gpt-5-mini",
+   prompt: "Make a notes app",
+   messages: [],
+   files: createDefaultProjectFiles(),
+@@ -254,20 +254,54 @@ describe("handleGenerateRequest", () => {
+     );
+     expect(content).toContainEqual(
+       expect.objectContaining({
+         type: "document",
+         title: "brief.md",
+         source: { type: "text", media_type: "text/plain", data: "# Brief\nUse the uploaded material." },
+       }),
+     );
+     expect(content.at(-1)).toEqual(expect.objectContaining({ type: "text" }));
+   });
++
++  it("aceita provider claude-cli sem apiKey e roteia pelo cli runner", async () => {
++    const runner = vi.fn(async () => ({
++      stdout: JSON.stringify({
++        result: JSON.stringify({
++          summary: "ok",
++          files: [{ path: "src/App.tsx", content: "export default function App() { return <main>Button</main>; }" }],
++          notes: [],
++          errors: [],
++        }),
++      }),
++      stderr: "",
++    }));
++    const result = await handleGenerateRequest(
++      {
++        provider: "claude-cli",
++        model: "",
++        prompt: "faz um botão",
++        files: { "package.json": "{}" },
++      },
++      fetch,
++      runner,
++    );
++    expect(result.change.summary).toBe("ok");
++  });
++
++  it("rejeita provider openai sem apiKey", async () => {
++    await expect(
++      handleGenerateRequest(
++        { provider: "openai", model: "gpt-5-mini", prompt: "x", files: { "package.json": "{}" } },
++        fetch,
++      ),
++    ).rejects.toBeInstanceOf(GenerateRequestError);
++  });
+ });
+ 
+ function textReference(name: string, projectPath: string, size: number): ProjectReference {
+   return {
+     id: `ref-${name}`,
+     name,
+     mimeType: "text/markdown",
+     size,
+     kind: "text",
+     projectPath,
+diff --git a/src/lib/ai/generate.ts b/src/lib/ai/generate.ts
+index 189a018..731ea54 100644
+--- a/src/lib/ai/generate.ts
++++ b/src/lib/ai/generate.ts
+@@ -1,12 +1,13 @@
+ import { z } from "zod";
+ 
++import { callCliAgent, type CliRunner } from "@/lib/ai/cli-agent";
+ import { GenerateRequestError, ProviderRequestError } from "@/lib/ai/errors";
+ import { applyGeneratedChange } from "@/lib/project/apply-files";
+ import {
+   createDefaultGenerationSkill,
+   generationSkillPromptContent,
+   MAX_GENERATION_SKILL_CONTENT_BYTES,
+ } from "@/lib/project/generation-skill";
+ import { GENERATED_CHANGE_JSON_SCHEMA, GeneratedChangeSchema } from "@/lib/project/schema";
+ import { validatePackageJson, validateProjectPath } from "@/lib/project/paths";
+ import {
+@@ -47,30 +48,48 @@ const GenerationSkillSchema = z
+     z.object({
+       source: z.literal("github"),
+       name: z.string().min(1).max(120),
+       sourceUrl: z.string().url().max(1000),
+       content: z.string().min(1).max(MAX_GENERATION_SKILL_CONTENT_BYTES),
+       fetchedAt: z.string().min(1).max(80),
+     }),
+   ])
+   .default(createDefaultGenerationSkill);
+ 
+-const GenerateRequestSchema = z.object({
+-  provider: z.enum(["openai", "anthropic"]),
+-  apiKey: z.string().min(1),
+-  model: z.string().min(1).max(120),
+-  prompt: z.string().min(1).max(12000),
+-  messages: z.array(MessageSchema).max(12).default([]),
+-  files: z.record(z.string()),
+-  references: z.array(ProjectReferenceSchema).max(10).default([]),
+-  generationSkill: GenerationSkillSchema,
+-});
++const GenerateRequestSchema = z
++  .object({
++    provider: z.enum(["openai", "anthropic", "claude-cli", "codex-cli"]),
++    apiKey: z.string().max(400).default(""),
++    model: z.string().max(120).default(""),
++    prompt: z.string().min(1).max(12000),
++    messages: z.array(MessageSchema).max(12).default([]),
++    files: z.record(z.string()),
++    references: z.array(ProjectReferenceSchema).max(10).default([]),
++    generationSkill: GenerationSkillSchema,
++  })
++  .superRefine((value, ctx) => {
++    const isHttp = value.provider === "openai" || value.provider === "anthropic";
++    if (isHttp && value.apiKey.trim().length === 0) {
++      ctx.addIssue({
++        code: z.ZodIssueCode.custom,
++        message: "apiKey is required for HTTP providers",
++        path: ["apiKey"],
++      });
++    }
++    if (isHttp && value.model.trim().length === 0) {
++      ctx.addIssue({
++        code: z.ZodIssueCode.custom,
++        message: "model is required for HTTP providers",
++        path: ["model"],
++      });
++    }
++  });
+ 
+ type GenerateRequest = z.infer<typeof GenerateRequestSchema>;
+ 
+ type OpenAIContentBlock =
+   | { type: "input_text"; text: string }
+   | { type: "input_image"; image_url: string; detail: "auto" }
+   | { type: "input_file"; filename: string; file_data: string };
+ 
+ type AnthropicContentBlock =
+   | { type: "text"; text: string }
+@@ -83,51 +102,73 @@ type AnthropicContentBlock =
+       title: string;
+       context?: string;
+       source:
+         | { type: "text"; media_type: "text/plain"; data: string }
+         | { type: "base64"; media_type: string; data: string };
+     };
+ 
+ export async function handleGenerateRequest(
+   rawInput: unknown,
+   fetchImpl: FetchImpl = fetch,
++  cliRunner?: CliRunner,
+ ): Promise<{ change: GeneratedChange }> {
+   const parsedInput = GenerateRequestSchema.safeParse(rawInput);
+   if (!parsedInput.success) {
+     throw new GenerateRequestError(parsedInput.error.issues.map((issue) => issue.message).join("; "));
+   }
+ 
+   validateInputFiles(parsedInput.data.files);
+   validateReferences(parsedInput.data.references, parsedInput.data.files);
+ 
+-  const change =
+-    parsedInput.data.provider === "openai"
+-      ? await callOpenAI(parsedInput.data, fetchImpl)
+-      : await callAnthropic(parsedInput.data, fetchImpl);
++  const change = await dispatchProvider(parsedInput.data, fetchImpl, cliRunner);
+ 
+   const parsedChange = GeneratedChangeSchema.safeParse(change);
+   if (!parsedChange.success) {
+     throw new ProviderRequestError(
+       `Provider returned invalid change: ${parsedChange.error.issues
+         .map((issue) => issue.message)
+         .join("; ")}`,
+     );
+   }
+ 
+   const applied = applyGeneratedChange(parsedInput.data.files, parsedChange.data);
+   if (!applied.ok) {
+     throw new ProviderRequestError(applied.error);
+   }
+ 
+   return { change: applied.change };
+ }
+ 
++async function dispatchProvider(
++  input: GenerateRequest,
++  fetchImpl: FetchImpl,
++  cliRunner?: CliRunner,
++): Promise<unknown> {
++  switch (input.provider) {
++    case "openai":
++      return callOpenAI(input, fetchImpl);
++    case "anthropic":
++      return callAnthropic(input, fetchImpl);
++    case "claude-cli":
++    case "codex-cli":
++      return callCliAgent(
++        {
++          provider: input.provider,
++          model: input.model,
++          systemPrompt: SYSTEM_PROMPT,
++          userPrompt: buildUserPrompt(input),
++        },
++        cliRunner,
++      );
++  }
++}
++
+ async function callOpenAI(input: GenerateRequest, fetchImpl: FetchImpl): Promise<unknown> {
+   const response = await fetchImpl("https://api.openai.com/v1/responses", {
+     method: "POST",
+     headers: {
+       Authorization: `Bearer ${input.apiKey}`,
+       "Content-Type": "application/json",
+     },
+     body: JSON.stringify({
+       model: input.model,
+       instructions: SYSTEM_PROMPT,
+@@ -337,20 +378,24 @@ function buildReferencePrompt(input: GenerateRequest): string {
+       if (reference.kind === "text") {
+         return `${metadata.join("\n")}\n\n${truncateFile(input.files[reference.projectPath] ?? "")}`;
+       }
+ 
+       return `${metadata.join("\n")}\n${binaryReferencePromptNote(reference, input.provider)}`;
+     })
+     .join("\n\n");
+ }
+ 
+ function binaryReferencePromptNote(reference: ProjectReference, provider: ProviderId): string {
++  if (provider === "claude-cli" || provider === "codex-cli") {
++    return "Metadata only; the CLI agent receives a text prompt and does not get this file as a block.";
++  }
++
+   if (isSupportedProviderImage(reference)) {
+     return provider === "openai"
+       ? "Attached as an input_image block."
+       : "Attached as an image content block.";
+   }
+ 
+   if (isPdfReference(reference)) {
+     return provider === "openai"
+       ? "Attached as an input_file block."
+       : "Attached as a document content block.";
+diff --git a/src/lib/project/types.ts b/src/lib/project/types.ts
+index 49f2ef5..37a6de8 100644
+--- a/src/lib/project/types.ts
++++ b/src/lib/project/types.ts
+@@ -1,13 +1,13 @@
+ import type { GenerationSkill } from "@/lib/project/generation-skill";
+ 
+-export type ProviderId = "openai" | "anthropic";
++export type ProviderId = "openai" | "anthropic" | "claude-cli" | "codex-cli";
+ 
+ export type ProjectFileMap = Record<string, string>;
+ 
+ export type MessageRole = "user" | "assistant";
+ 
+ export type ProjectReferenceKind = "text" | "binary";
+ 
+ export interface ChatMessage {
+   id: string;
+   role: MessageRole;
+
+--- Changes ---
+
+src/components/workspace.tsx
+  @@ -62,20 +62,22 @@ import {
+  +  "claude-cli": "",
+  +  "codex-cli": "",
+   };
+   
+   type ActiveDrawer = "settings" | "files" | "projects" | null;
+   type SkillNotice = { tone: "success" | "error"; message: string };
+   
+   const promptExamples = [
+     "Landing page para uma cafeteria de bairro",
+     "Dashboard simples de vendas com cards e grafico",
+     "Tela de login acolhedora para um app financeiro",
+   ];
+  @@ -255,20 +257,28 @@ export function Workspace() {
+  +    const isHttpProvider = provider === "openai" || provider === "anthropic";
+  +    if (isHttpProvider && !apiKey.trim()) {
+  +      openDrawer("settings");
+  +      setSettingsNotice("Adicione sua chave de API para criar a tela.");
+  +      setNotice(null);
+  +      return;
+  +    }
+  +
+       setNotice(null);
+       setSettingsNotice(null);
+       setReferenceNotice(null);
+       setDraft("");
+       setIsGenerating(true);
+   
+       const userMessage = createMessage("user", prompt);
+       setProject({ ...project, messages: [...project.messages, userMessage] });
+   
+       try {
+  +10 -0
+
+src/lib/ai/generate.test.ts
+  @@ -1,13 +1,13 @@
+  -import { handleGenerateRequest } from "@/lib/ai/generate";
+  +import { GenerateRequestError, handleGenerateRequest } from "@/lib/ai/generate";
+   import { createDefaultProjectFiles } from "@/lib/project/template";
+   import type { ProjectReference } from "@/lib/project/types";
+   
+   const request = {
+     provider: "openai" as const,
+     apiKey: "test-key",
+     model: "gpt-5-mini",
+     prompt: "Make a notes app",
+     messages: [],
+     files: createDefaultProjectFiles(),
+  @@ -254,20 +254,54 @@ describe("handleGenerateRequest", () => {
+  +
+  +  it("aceita provider claude-cli sem apiKey e roteia pelo cli runner", async () => {
+  +    const runner = vi.fn(async () => ({
+  +      stdout: JSON.stringify({
+  +        result: JSON.stringify({
+  +          summary: "ok",
+  +          files: [{ path: "src/App.tsx", content: "export default function App() { return <main>Button</main>; }" }],
+  +          notes: [],
+  +          errors: [],
+  +        }),
+  +      }),
+  +      stderr: "",
+  +    }));
+  +    const result = await handleGenerateRequest(
+  +      {
+  +        provider: "claude-cli",
+  +        model: "",
+  +        prompt: "faz um botão",
+  +        files: { "package.json": "{}" },
+  +      },
+  +      fetch,
+  +      runner,
+  +    );
+  +    expect(result.change.summary).toBe("ok");
+  +  });
+  +
+  +  it("rejeita provider openai sem apiKey", async () => {
+  +    await expect(
+  +      handleGenerateRequest(
+  +        { provider: "openai", model: "gpt-5-mini", prompt: "x", files: { "package.json": "{}" } },
+  +        fetch,
+  +      ),
+  +    ).rejects.toBeInstanceOf(GenerateRequestError);
+  +  });
+   });
+   
+   function textReference(name: string, projectPath: string, size: number): ProjectReference {
+     return {
+       id: `ref-${name}`,
+       name,
+       mimeType: "text/markdown",
+       size,
+       kind: "text",
+       projectPath,
+  +35 -1
+
+src/lib/ai/generate.ts
+  @@ -1,12 +1,13 @@
+  +import { callCliAgent, type CliRunner } from "@/lib/ai/cli-agent";
+   import { GenerateRequestError, ProviderRequestError } from "@/lib/ai/errors";
+   import { applyGeneratedChange } from "@/lib/project/apply-files";
+   import {
+     createDefaultGenerationSkill,
+     generationSkillPromptContent,
+     MAX_GENERATION_SKILL_CONTENT_BYTES,
+   } from "@/lib/project/generation-skill";
+   import { GENERATED_CHANGE_JSON_SCHEMA, GeneratedChangeSchema } from "@/lib/project/schema";
+   import { validatePackageJson, validateProjectPath } from "@/lib/project/paths";
+   import {
+  @@ -47,30 +48,48 @@ const GenerationSkillSchema = z
+  -const GenerateRequestSchema = z.object({
+  -  provider: z.enum(["openai", "anthropic"]),
+  -  apiKey: z.string().min(1),
+  -  model: z.string().min(1).max(120),
+  -  prompt: z.string().min(1).max(12000),
+  -  messages: z.array(MessageSchema).max(12).default([]),
+  -  files: z.record(z.string()),
+  -  references: z.array(ProjectReferenceSchema).max(10).default([]),
+  -  generationSkill: GenerationSkillSchema,
+  -});
+  +const GenerateRequestSchema = z
+  +  .object({
+  +    provider: z.enum(["openai", "anthropic", "claude-cli", "codex-cli"]),
+  +    apiKey: z.string().max(400).default(""),
+  +    model: z.string().max(120).default(""),
+  +    prompt: z.string().min(1).max(12000),
+  +    messages: z.array(MessageSchema).max(12).default([]),
+  +    files: z.record(z.string()),
+  +    references: z.array(ProjectReferenceSchema).max(10).default([]),
+  +    generationSkill: GenerationSkillSchema,
+  +  })
+  +  .superRefine((value, ctx) => {
+  +    const isHttp = value.provider === "openai" || value.provider === "anthropic";
+  +    if (isHttp && value.apiKey.trim().length === 0) {
+  +      ctx.addIssue({
+  +        code: z.ZodIssueCode.custom,
+  +        message: "apiKey is required for HTTP providers",
+  +        path: ["apiKey"],
+  +      });
+  +    }
+  +    if (isHttp && value.model.trim().length === 0) {
+  +      ctx.addIssue({
+  +        code: z.ZodIssueCode.custom,
+  +        message: "model is required for HTTP providers",
+  +        path: ["model"],
+  +      });
+  +    }
+  +  });
+   
+   type GenerateRequest = z.infer<typeof GenerateRequestSchema>;
+   
+   type OpenAIContentBlock =
+     | { type: "input_text"; text: string }
+     | { type: "input_image"; image_url: string; detail: "auto" }
+     | { type: "input_file"; filename: string; file_data: string };
+   
+   type AnthropicContentBlock =
+     | { type: "text"; text: string }
+  @@ -83,51 +102,73 @@ type AnthropicContentBlock =
+  +  cliRunner?: CliRunner,
+   ): Promise<{ change: GeneratedChange }> {
+     const parsedInput = GenerateRequestSchema.safeParse(rawInput);
+     if (!parsedInput.success) {
+       throw new GenerateRequestError(parsedInput.error.issues.map((issue) => issue.message).join("; "));
+     }
+   
+     validateInputFiles(parsedInput.data.files);
+     validateReferences(parsedInput.data.references, parsedInput.data.files);
+   
+  -  const change =
+  -    parsedInput.data.provider === "openai"
+  -      ? await callOpenAI(parsedInput.data, fetchImpl)
+  -      : await callAnthropic(parsedInput.data, fetchImpl);
+  +  const change = await dispatchProvider(parsedInput.data, fetchImpl, cliRunner);
+   
+     const parsedChange = GeneratedChangeSchema.safeParse(change);
+     if (!parsedChange.success) {
+       throw new ProviderRequestError(
+         `Provider returned invalid change: ${parsedChange.error.issues
+           .map((issue) => issue.message)
+           .join("; ")}`,
+       );
+     }
+   
+     const applied = applyGeneratedChange(parsedInput.data.files, parsedChange.data);
+     if (!applied.ok) {
+       throw new ProviderRequestError(applied.error);
+     }
+   
+     return { change: applied.change };
+   }
+   
+  +async function dispatchProvider(
+  +  input: GenerateRequest,
+  +  fetchImpl: FetchImpl,
+  +  cliRunner?: CliRunner,
+  +): Promise<unknown> {
+  +  switch (input.provider) {
+  +    case "openai":
+  +      return callOpenAI(input, fetchImpl);
+  +    case "anthropic":
+  +      return callAnthropic(input, fetchImpl);
+  +    case "claude-cli":
+  +    case "codex-cli":
+  +      return callCliAgent(
+  +        {
+  +          provider: input.provider,
+  +          model: input.model,
+  +          systemPrompt: SYSTEM_PROMPT,
+  +          userPrompt: buildUserPrompt(input),
+  +        },
+  +        cliRunner,
+  +      );
+  +  }
+  +}
+  +
+   async function callOpenAI(input: GenerateRequest, fetchImpl: FetchImpl): Promise<unknown> {
+     const response = await fetchImpl("https://api.openai.com/v1/responses", {
+       method: "POST",
+       headers: {
+         Authorization: `Bearer ${input.apiKey}`,
+         "Content-Type": "application/json",
+       },
+       body: JSON.stringify({
+         model: input.model,
+         instructions: SYSTEM_PROMPT,
+  @@ -337,20 +378,24 @@ function buildReferencePrompt(input: GenerateRequest): string {
+  +  if (provider === "claude-cli" || provider === "codex-cli") {
+  +    return "Metadata only; the CLI agent receives a text prompt and does not get this file as a block.";
+  +  }
+  +
+     if (isSupportedProviderImage(reference)) {
+       return provider === "openai"
+         ? "Attached as an input_image block."
+         : "Attached as an image content block.";
+     }
+   
+     if (isPdfReference(reference)) {
+       return provider === "openai"
+         ? "Attached as an input_file block."
+         : "Attached as a document content block.";
+  +59 -14
+
+src/lib/project/types.ts
+  @@ -1,13 +1,13 @@
+  -export type ProviderId = "openai" | "anthropic";
+  +export type ProviderId = "openai" | "anthropic" | "claude-cli" | "codex-cli";
+   
+   export type ProjectFileMap = Record<string, string>;
+   
+   export type MessageRole = "user" | "assistant";
+   
+   export type ProjectReferenceKind = "text" | "binary";
+   
+   export interface ChatMessage {
+     id: string;
+     role: MessageRole;
+  +1 -1

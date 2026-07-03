@@ -1,9 +1,9 @@
 services:
-  figma-fake:
+  telar:
     build:
       context: .
       dockerfile: Dockerfile
-    image: figma-fake:local
+    image: telar:local
     ports:
       - "3000:3000"
     environment:

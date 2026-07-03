@@ -1,0 +1,136 @@
+=== COMMITS 15b394b..HEAD ===
+412c493 feat: persist CLI provider preferences
+
+=== DIFF STAT ===
+src/lib/storage/projects.test.ts | 7 +++++++
+ src/lib/storage/projects.ts      | 8 +++++---
+ 2 files changed, 12 insertions(+), 3 deletions(-)
+
+=== DIFF -U10 ===
+src/lib/storage/projects.test.ts | 7 +++++++
+ src/lib/storage/projects.ts      | 8 +++++---
+ 2 files changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/src/lib/storage/projects.test.ts b/src/lib/storage/projects.test.ts
+index 66263cf..21ada37 100644
+--- a/src/lib/storage/projects.test.ts
++++ b/src/lib/storage/projects.test.ts
+@@ -1,19 +1,20 @@
+ import "fake-indexeddb/auto";
+ 
+ import { beforeEach, describe, expect, it } from "vitest";
+ 
+ import {
+   clearProjectStorageForTests,
+   createProject,
+   loadProject,
+   listProjectSummaries,
++  loadProviderPreferences,
+   migrateProject,
+   saveProject,
+   saveProviderPreferences,
+ } from "@/lib/storage/projects";
+ 
+ describe("project persistence", () => {
+   beforeEach(async () => {
+     localStorage.clear();
+     await clearProjectStorageForTests();
+   });
+@@ -88,11 +89,17 @@ describe("project persistence", () => {
+ 
+   it("does not persist BYOK API keys in provider preferences", () => {
+     saveProviderPreferences({
+       provider: "openai",
+       model: "gpt-5-mini",
+       apiKey: "test-secret",
+     });
+ 
+     expect(localStorage.getItem("like-figma.provider")).not.toContain("test-secret");
+   });
++
++  it("carrega preferências de provider CLI com modelo vazio", () => {
++    localStorage.setItem("like-figma.provider", JSON.stringify({ provider: "claude-cli", model: "" }));
++    const prefs = loadProviderPreferences();
++    expect(prefs).toEqual({ provider: "claude-cli", model: "" });
++  });
+ });
+diff --git a/src/lib/storage/projects.ts b/src/lib/storage/projects.ts
+index bf2e578..a893202 100644
+--- a/src/lib/storage/projects.ts
++++ b/src/lib/storage/projects.ts
+@@ -96,23 +96,25 @@ export function saveProviderPreferences(preferences: ProviderPreferences): void
+   };
+   localStorage.setItem(PROVIDER_STORAGE_KEY, JSON.stringify(persisted));
+ }
+ 
+ export function loadProviderPreferences(): Omit<ProviderPreferences, "apiKey"> | undefined {
+   const raw = localStorage.getItem(PROVIDER_STORAGE_KEY);
+   if (!raw) return undefined;
+ 
+   try {
+     const parsed = JSON.parse(raw) as Omit<ProviderPreferences, "apiKey">;
+-    if (parsed.provider !== "openai" && parsed.provider !== "anthropic") return undefined;
+-    if (!parsed.model) return undefined;
+-    return parsed;
++    const validProviders = ["openai", "anthropic", "claude-cli", "codex-cli"];
++    if (!validProviders.includes(parsed.provider)) return undefined;
++    const isCli = parsed.provider === "claude-cli" || parsed.provider === "codex-cli";
++    if (!isCli && !parsed.model) return undefined;
++    return { provider: parsed.provider, model: parsed.model ?? "" };
+   } catch {
+     return undefined;
+   }
+ }
+ 
+ export function saveActiveProjectId(projectId: string): void {
+   localStorage.setItem(ACTIVE_PROJECT_KEY, projectId);
+ }
+ 
+ export function loadActiveProjectId(): string | undefined {
+
+--- Changes ---
+
+src/lib/storage/projects.test.ts
+  @@ -1,19 +1,20 @@
+  +  loadProviderPreferences,
+     migrateProject,
+     saveProject,
+     saveProviderPreferences,
+   } from "@/lib/storage/projects";
+   
+   describe("project persistence", () => {
+     beforeEach(async () => {
+       localStorage.clear();
+       await clearProjectStorageForTests();
+     });
+  @@ -88,11 +89,17 @@ describe("project persistence", () => {
+  +
+  +  it("carrega preferências de provider CLI com modelo vazio", () => {
+  +    localStorage.setItem("like-figma.provider", JSON.stringify({ provider: "claude-cli", model: "" }));
+  +    const prefs = loadProviderPreferences();
+  +    expect(prefs).toEqual({ provider: "claude-cli", model: "" });
+  +  });
+   });
+  +7 -0
+
+src/lib/storage/projects.ts
+  @@ -96,23 +96,25 @@ export function saveProviderPreferences(preferences: ProviderPreferences): void
+  -    if (parsed.provider !== "openai" && parsed.provider !== "anthropic") return undefined;
+  -    if (!parsed.model) return undefined;
+  -    return parsed;
+  +    const validProviders = ["openai", "anthropic", "claude-cli", "codex-cli"];
+  +    if (!validProviders.includes(parsed.provider)) return undefined;
+  +    const isCli = parsed.provider === "claude-cli" || parsed.provider === "codex-cli";
+  +    if (!isCli && !parsed.model) return undefined;
+  +    return { provider: parsed.provider, model: parsed.model ?? "" };
+     } catch {
+       return undefined;
+     }
+   }
+   
+   export function saveActiveProjectId(projectId: string): void {
+     localStorage.setItem(ACTIVE_PROJECT_KEY, projectId);
+   }
+   
+   export function loadActiveProjectId(): string | undefined {
+  +5 -3

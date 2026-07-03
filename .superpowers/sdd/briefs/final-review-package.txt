@@ -1,0 +1,2798 @@
+=== COMMITS 06ddd06ca821486022008ff56772844912e9aa6e..HEAD ===
+2a1dbfc docs: document CLI provider mode
+0111b49 feat: expose CLI providers in settings UI
+32e9ba7 test: guard HTTP providers reject empty model
+412c493 feat: persist CLI provider preferences
+15b394b feat: add /api/agents doctor route
+c807405 fix: remove duplicate apiKey guard and add CLI dispatch tests
+827d733 feat: extend schema and dispatch CLI providers
+823dc92 feat: add cli-agent module for claude/codex binaries
+03d9e70 refactor: extract AI error classes into errors.ts
+6d1817c Add CLI agent providers implementation plan
+7ac9936 Add CLI agent providers design spec
+
+=== DIFF STAT ===
+README.md                                          |  12 +
+ .../plans/2026-07-01-cli-agent-providers.md        | 994 +++++++++++++++++++++
+ .../specs/2026-07-01-cli-agent-providers-design.md | 138 +++
+ src/app/api/agents/route.test.ts                   |  17 +
+ src/app/api/agents/route.ts                        |   8 +
+ src/app/globals.css                                |  10 +
+ src/components/workspace.tsx                       |  82 +-
+ src/lib/ai/cli-agent.test.ts                       |  84 ++
+ src/lib/ai/cli-agent.ts                            | 206 +++++
+ src/lib/ai/errors.ts                               |  17 +
+ src/lib/ai/generate.test.ts                        |  70 +-
+ src/lib/ai/generate.ts                             |  92 +-
+ src/lib/project/types.ts                           |   2 +-
+ src/lib/storage/projects.test.ts                   |  17 +
+ src/lib/storage/projects.ts                        |   8 +-
+ 15 files changed, 1702 insertions(+), 55 deletions(-)
+
+=== FULL DIFF -U10 ===
+README.md                                          |  12 +
+ .../plans/2026-07-01-cli-agent-providers.md        | 994 +++++++++++++++++++++
+ .../specs/2026-07-01-cli-agent-providers-design.md | 138 +++
+ src/app/api/agents/route.test.ts                   |  17 +
+ src/app/api/agents/route.ts                        |   8 +
+ src/app/globals.css                                |  10 +
+ src/components/workspace.tsx                       |  82 +-
+ src/lib/ai/cli-agent.test.ts                       |  84 ++
+ src/lib/ai/cli-agent.ts                            | 206 +++++
+ src/lib/ai/errors.ts                               |  17 +
+ src/lib/ai/generate.test.ts                        |  70 +-
+ src/lib/ai/generate.ts                             |  92 +-
+ src/lib/project/types.ts                           |   2 +-
+ src/lib/storage/projects.test.ts                   |  17 +
+ src/lib/storage/projects.ts                        |   8 +-
+ 15 files changed, 1702 insertions(+), 55 deletions(-)
+
+diff --git a/README.md b/README.md
+index 0d7f189..54811ed 100644
+--- a/README.md
++++ b/README.md
+@@ -14,20 +14,21 @@ IndexedDB do navegador, e a chave de API e fornecida pelo usuario em modo BYOK
+ 
+ - Gera alteracoes completas para projetos Vite + React + TypeScript.
+ - Suporta OpenAI e Anthropic, com modelo configuravel por usuario.
+ - Mantem multiplos projetos locais com historico de conversa e arquivos.
+ - Executa a preview no navegador com WebContainer.
+ - Permite anexar referencias de texto, imagem e PDF para orientar a geracao.
+ - Exporta o projeto como ZIP, incluindo referencias permitidas.
+ - Permite trocar a skill de geracao por projeto:
+   - padrao embutido: `frontend-design`;
+   - customizada: URL publica do GitHub apontando diretamente para `SKILL.md`.
++- Suporta tambem os binarios locais `claude` e `codex` como provedores (modo CLI), usando a autenticacao da propria CLI, sem API key.
+ 
+ ## Requisitos
+ 
+ - Node.js 24 ou compativel com as dependencias atuais.
+ - npm.
+ - Um navegador moderno. Para preview com WebContainer, Chrome/Chromium tende a
+   ser a opcao mais confiavel.
+ - Uma chave de API da OpenAI ou Anthropic para usar a geracao real.
+ 
+ ## Subindo localmente
+@@ -67,20 +68,31 @@ Abra:
+ ```text
+ http://localhost:3000
+ ```
+ 
+ Para parar:
+ 
+ ```bash
+ docker compose down
+ ```
+ 
++## Modo CLI (claude / codex)
++
++Se os binarios `claude` (Claude Code) ou `codex` (OpenAI Codex) estiverem no
++PATH da maquina que roda o Next, eles aparecem como provedores em Configuracoes.
++O modo CLI usa a autenticacao da propria ferramenta (sua assinatura), nao precisa
++de API key e o modelo e opcional. Para apontar um caminho customizado use as
++variaveis de ambiente `LIKE_FIGMA_CLAUDE_BIN` e `LIKE_FIGMA_CODEX_BIN`.
++
++Observacao: o modo CLI recebe apenas texto no prompt; referencias de imagem/PDF
++entram somente como metadado.
++
+ ## Comandos uteis
+ 
+ ```bash
+ npm run lint
+ npm run typecheck
+ npm test
+ npm run build
+ npm run test:e2e
+ npm audit --omit=dev
+ ```
+diff --git a/docs/superpowers/plans/2026-07-01-cli-agent-providers.md b/docs/superpowers/plans/2026-07-01-cli-agent-providers.md
+new file mode 100644
+index 0000000..75048c8
+--- /dev/null
++++ b/docs/superpowers/plans/2026-07-01-cli-agent-providers.md
+@@ -0,0 +1,994 @@
++# CLI Agent Providers Implementation Plan
++
++> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
++
++**Goal:** Adicionar os providers `claude-cli` e `codex-cli` ao like-figma, que geram um `GeneratedChange` invocando o binário local `claude`/`codex` em modo não-interativo, reusando todo o pipeline existente.
++
++**Architecture:** Um novo módulo `cli-agent.ts` spawna o binário via `execFile` (sem shell, prompt via stdin, cwd em tempdir vazio) e devolve o mesmo JSON `GeneratedChange` dos providers HTTP. `handleGenerateRequest` ganha o dispatch para os dois casos CLI. As classes de erro são extraídas para `errors.ts` para evitar import circular. Uma rota `GET /api/agents` reporta quais binários existem, e a UI mostra os providers CLI condicionalmente, escondendo o campo de API key.
++
++**Tech Stack:** Next.js 16, React 19, TypeScript, Zod, Vitest, `node:child_process`, `node:fs/promises`.
++
++## Global Constraints
++
++- Projeto gerado permanece Vite + React + TypeScript (inalterado).
++- Nomes de binário são fixos: `claude` e `codex`, overridáveis apenas por env `LIKE_FIGMA_CLAUDE_BIN` / `LIKE_FIGMA_CODEX_BIN`.
++- Spawn sempre com `execFile` **sem shell**; prompt entra por **stdin**, nunca por argv.
++- cwd do subprocesso = tempdir vazio criado com `mkdtemp`, removido em `finally`.
++- Timeout do subprocesso = 120000 ms; `maxBuffer` = 20 MB.
++- Providers CLI **não** usam API key; campo de modelo é opcional (só passa `--model` se preenchido).
++- Referências de texto entram no prompt; imagem/PDF entram apenas como metadado no modo CLI.
++- Todo passo de código segue TDD: teste falhando → implementação mínima → teste passando → commit.
++- Comandos: `npm test` (vitest), `npm run typecheck`, `npm run lint`, `npm run build`.
++
++---
++
++### Task 1: Extrair classes de erro para `errors.ts`
++
++Refactor puro que quebra o futuro ciclo de import entre `generate.ts` e `cli-agent.ts`. Sem mudança de comportamento.
++
++**Files:**
++- Create: `src/lib/ai/errors.ts`
++- Modify: `src/lib/ai/generate.ts` (remove as duas classes, importa e re-exporta de `errors.ts`)
++
++**Interfaces:**
++- Produces: `GenerateRequestError` (`constructor(message: string, status = 400)`, campo `status: number`) e `ProviderRequestError` (`constructor(message: string, status = 502)`, campo `status: number`), exportadas de `src/lib/ai/errors.ts` e re-exportadas de `src/lib/ai/generate.ts`.
++
++- [ ] **Step 1: Criar `errors.ts`**
++
++```ts
++// src/lib/ai/errors.ts
++export class GenerateRequestError extends Error {
++  constructor(
++    message: string,
++    public readonly status = 400,
++  ) {
++    super(message);
++  }
++}
++
++export class ProviderRequestError extends Error {
++  constructor(
++    message: string,
++    public readonly status = 502,
++  ) {
++    super(message);
++  }
++}
++```
++
++- [ ] **Step 2: Remover as classes de `generate.ts` e importar de `errors.ts`**
++
++Em `src/lib/ai/generate.ts`, apagar os dois blocos `export class GenerateRequestError {...}` e `export class ProviderRequestError {...}` (linhas ~22-40). Adicionar no topo, junto aos outros imports:
++
++```ts
++import { GenerateRequestError, ProviderRequestError } from "@/lib/ai/errors";
++```
++
++E logo abaixo dos imports, re-exportar para não quebrar `route.ts`:
++
++```ts
++export { GenerateRequestError, ProviderRequestError };
++```
++
++- [ ] **Step 3: Rodar a suíte para garantir que nada quebrou**
++
++Run: `npm test -- src/lib/ai/generate.test.ts`
++Expected: PASS (mesmos testes de antes).
++
++- [ ] **Step 4: Typecheck**
++
++Run: `npm run typecheck`
++Expected: sem erros.
++
++- [ ] **Step 5: Commit**
++
++```bash
++git add src/lib/ai/errors.ts src/lib/ai/generate.ts
++git commit -m "refactor: extract AI error classes into errors.ts"
++```
++
++---
++
++### Task 2: Estender `ProviderId` e o schema de request
++
++Adiciona os dois novos providers ao tipo e ao Zod, tornando `apiKey`/`model` condicionais.
++
++**Files:**
++- Modify: `src/lib/project/types.ts:3`
++- Modify: `src/lib/ai/generate.ts` (GenerateRequestSchema, ~linha 70-88)
++- Test: `src/lib/ai/generate.test.ts`
++
++**Interfaces:**
++- Produces: `ProviderId = "openai" | "anthropic" | "claude-cli" | "codex-cli"`. `GenerateRequestSchema` aceita os 4 providers; exige `apiKey` e `model` não-vazios apenas para `openai`/`anthropic`.
++
++- [ ] **Step 1: Escrever os testes falhando**
++
++Adicionar em `src/lib/ai/generate.test.ts` (usar o mesmo helper de request válido já existente no arquivo; se não houver, construir o objeto inline com `files: { "package.json": "{}" }` e demais campos mínimos):
++
++```ts
++it("aceita provider claude-cli sem apiKey", async () => {
++  const runner = async () => ({
++    stdout: JSON.stringify({
++      result: JSON.stringify({ summary: "ok", files: [], notes: [], errors: [] }),
++    }),
++    stderr: "",
++  });
++  const result = await handleGenerateRequest(
++    {
++      provider: "claude-cli",
++      model: "",
++      prompt: "faz um botão",
++      files: { "package.json": "{}" },
++    },
++    fetch,
++    runner,
++  );
++  expect(result.change.summary).toBe("ok");
++});
++
++it("rejeita provider openai sem apiKey", async () => {
++  await expect(
++    handleGenerateRequest(
++      { provider: "openai", model: "gpt-5-mini", prompt: "x", files: { "package.json": "{}" } },
++      fetch,
++    ),
++  ).rejects.toBeInstanceOf(GenerateRequestError);
++});
++```
++
++Garantir que `GenerateRequestError` está importado no topo do teste.
++
++- [ ] **Step 2: Rodar para ver falhar**
++
++Run: `npm test -- src/lib/ai/generate.test.ts`
++Expected: FAIL (o schema só conhece openai/anthropic; `handleGenerateRequest` ainda não aceita 3º argumento).
++
++> Nota: o 3º argumento `runner` e o dispatch CLI são implementados na Task 4; estes testes só passam totalmente ao fim da Task 4. Deixe-os falhando e siga — os passos abaixo desta task cobrem apenas o schema.
++
++- [ ] **Step 3: Estender `ProviderId`**
++
++Em `src/lib/project/types.ts` linha 3:
++
++```ts
++export type ProviderId = "openai" | "anthropic" | "claude-cli" | "codex-cli";
++```
++
++- [ ] **Step 4: Atualizar o schema em `generate.ts`**
++
++Substituir as três linhas do `GenerateRequestSchema`:
++
++```ts
++  provider: z.enum(["openai", "anthropic"]),
++  apiKey: z.string().min(1),
++  model: z.string().min(1).max(120),
++```
++
++por:
++
++```ts
++  provider: z.enum(["openai", "anthropic", "claude-cli", "codex-cli"]),
++  apiKey: z.string().max(400).default(""),
++  model: z.string().max(120).default(""),
++```
++
++E envolver o `z.object({...})` com um refine ao final da definição (após a chave de fechamento do objeto, antes do `;`):
++
++```ts
++}).superRefine((value, ctx) => {
++  const isHttp = value.provider === "openai" || value.provider === "anthropic";
++  if (isHttp && value.apiKey.trim().length === 0) {
++    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "apiKey is required for HTTP providers", path: ["apiKey"] });
++  }
++  if (isHttp && value.model.trim().length === 0) {
++    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "model is required for HTTP providers", path: ["model"] });
++  }
++});
++```
++
++- [ ] **Step 5: Typecheck (os testes CLI ainda falham até a Task 4)**
++
++Run: `npm run typecheck`
++Expected: sem erros de tipo. `GenerateRequest` continua inferível.
++
++- [ ] **Step 6: Commit**
++
++```bash
++git add src/lib/project/types.ts src/lib/ai/generate.ts src/lib/ai/generate.test.ts
++git commit -m "feat: extend ProviderId and request schema for CLI providers"
++```
++
++---
++
++### Task 3: Módulo `cli-agent.ts` (core)
++
++O coração: monta o prompt, spawna o binário, parseia a saída, mapeia erros. Totalmente testável via `runner` injetável.
++
++**Files:**
++- Create: `src/lib/ai/cli-agent.ts`
++- Test: `src/lib/ai/cli-agent.test.ts`
++
++**Interfaces:**
++- Consumes: `ProviderRequestError` de `@/lib/ai/errors`.
++- Produces:
++  - `type CliRunResult = { stdout: string; stderr: string }`
++  - `type CliRunner = (bin: string, args: string[], options: { input: string; cwd: string; timeoutMs: number }) => Promise<CliRunResult>`
++  - `interface CliAgentInput { provider: "claude-cli" | "codex-cli"; model?: string; systemPrompt: string; userPrompt: string }`
++  - `async function callCliAgent(input: CliAgentInput, runner?: CliRunner): Promise<unknown>` — retorna o candidato a `GeneratedChange` (unknown), igual `callOpenAI`/`callAnthropic`.
++  - `async function isBinaryAvailable(bin: string, env?: NodeJS.ProcessEnv, accessFn?: typeof import("node:fs/promises").access): Promise<boolean>`
++  - `async function detectCliAgents(env?, accessFn?): Promise<{ claude: boolean; codex: boolean }>`
++
++- [ ] **Step 1: Escrever os testes falhando**
++
++```ts
++// src/lib/ai/cli-agent.test.ts
++import { describe, expect, it, vi } from "vitest";
++
++import { callCliAgent, isBinaryAvailable, type CliRunner } from "@/lib/ai/cli-agent";
++import { ProviderRequestError } from "@/lib/ai/errors";
++
++const change = { summary: "ok", files: [], notes: [], errors: [] };
++const base = { systemPrompt: "SYS", userPrompt: "faz um card" };
++
++it("parseia o envelope JSON do Claude", async () => {
++  const runner: CliRunner = async (bin, args, opts) => {
++    expect(bin).toBe("claude");
++    expect(args).toEqual(["-p", "--output-format", "json"]);
++    expect(opts.input).toContain("faz um card");
++    return { stdout: JSON.stringify({ result: JSON.stringify(change) }), stderr: "" };
++  };
++  const out = await callCliAgent({ ...base, provider: "claude-cli" }, runner);
++  expect(out).toEqual(change);
++});
++
++it("passa --model quando informado", async () => {
++  const runner: CliRunner = async (_bin, args) => {
++    expect(args).toEqual(["-p", "--output-format", "json", "--model", "claude-opus-4-8"]);
++    return { stdout: JSON.stringify({ result: JSON.stringify(change) }), stderr: "" };
++  };
++  await callCliAgent({ ...base, provider: "claude-cli", model: "claude-opus-4-8" }, runner);
++});
++
++it("parseia a saída JSONL do Codex", async () => {
++  const stdout = [
++    JSON.stringify({ type: "thread.started" }),
++    JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify(change) } }),
++  ].join("\n");
++  const runner: CliRunner = async (bin, args) => {
++    expect(bin).toBe("codex");
++    expect(args).toEqual(["exec", "--json"]);
++    return { stdout, stderr: "" };
++  };
++  const out = await callCliAgent({ ...base, provider: "codex-cli" }, runner);
++  expect(out).toEqual(change);
++});
++
++it("extrai JSON mesmo com cercas markdown na saída do Claude", async () => {
++  const runner: CliRunner = async () => ({
++    stdout: JSON.stringify({ result: "```json\n" + JSON.stringify(change) + "\n```" }),
++    stderr: "",
++  });
++  const out = await callCliAgent({ ...base, provider: "claude-cli" }, runner);
++  expect(out).toEqual(change);
++});
++
++it("mapeia ENOENT para erro amigável", async () => {
++  const runner: CliRunner = async () => {
++    const err = new Error("spawn claude ENOENT") as Error & { code?: string };
++    err.code = "ENOENT";
++    throw err;
++  };
++  await expect(callCliAgent({ ...base, provider: "claude-cli" }, runner)).rejects.toThrow(/não encontrado no PATH/);
++});
++
++it("mapeia exit != 0 incluindo stderr", async () => {
++  const runner: CliRunner = async () => {
++    const err = new Error("Command failed") as Error & { stderr?: string };
++    err.stderr = "boom detail";
++    throw err;
++  };
++  await expect(callCliAgent({ ...base, provider: "codex-cli" }, runner)).rejects.toThrow(/boom detail/);
++});
++
++it("erra em saída não-JSON", async () => {
++  const runner: CliRunner = async () => ({ stdout: JSON.stringify({ result: "não é json" }), stderr: "" });
++  await expect(callCliAgent({ ...base, provider: "claude-cli" }, runner)).rejects.toBeInstanceOf(ProviderRequestError);
++});
++
++it("isBinaryAvailable acha binário no PATH", async () => {
++  const access = vi.fn().mockResolvedValueOnce(undefined);
++  const ok = await isBinaryAvailable("claude", { PATH: "/usr/bin" } as NodeJS.ProcessEnv, access);
++  expect(ok).toBe(true);
++});
++
++it("isBinaryAvailable retorna false quando ausente", async () => {
++  const access = vi.fn().mockRejectedValue(new Error("no"));
++  const ok = await isBinaryAvailable("codex", { PATH: "/usr/bin:/bin" } as NodeJS.ProcessEnv, access);
++  expect(ok).toBe(false);
++});
++```
++
++- [ ] **Step 2: Rodar para ver falhar**
++
++Run: `npm test -- src/lib/ai/cli-agent.test.ts`
++Expected: FAIL ("cannot find module cli-agent" / exports indefinidos).
++
++- [ ] **Step 3: Implementar `cli-agent.ts`**
++
++```ts
++// src/lib/ai/cli-agent.ts
++import { execFile } from "node:child_process";
++import { constants } from "node:fs";
++import { access as fsAccess, mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { delimiter, join } from "node:path";
++
++import { ProviderRequestError } from "@/lib/ai/errors";
++
++export type CliRunResult = { stdout: string; stderr: string };
++
++export type CliRunner = (
++  bin: string,
++  args: string[],
++  options: { input: string; cwd: string; timeoutMs: number },
++) => Promise<CliRunResult>;
++
++export interface CliAgentInput {
++  provider: "claude-cli" | "codex-cli";
++  model?: string;
++  systemPrompt: string;
++  userPrompt: string;
++}
++
++const TIMEOUT_MS = 120_000;
++const MAX_BUFFER = 20 * 1024 * 1024;
++
++const INSTRUCTION =
++  "Return ONLY a single JSON object matching the required schema. No markdown fences, no prose.";
++
++function binFor(provider: CliAgentInput["provider"]): string {
++  if (provider === "claude-cli") return process.env.LIKE_FIGMA_CLAUDE_BIN ?? "claude";
++  return process.env.LIKE_FIGMA_CODEX_BIN ?? "codex";
++}
++
++function argsFor(provider: CliAgentInput["provider"], model?: string): string[] {
++  const trimmed = model?.trim();
++  if (provider === "claude-cli") {
++    const args = ["-p", "--output-format", "json"];
++    if (trimmed) args.push("--model", trimmed);
++    return args;
++  }
++  const args = ["exec", "--json"];
++  if (trimmed) args.push("--model", trimmed);
++  return args;
++}
++
++export async function callCliAgent(input: CliAgentInput, runner: CliRunner = defaultCliRunner): Promise<unknown> {
++  const bin = binFor(input.provider);
++  const args = argsFor(input.provider, input.model);
++  const prompt = `${input.systemPrompt}\n\n${INSTRUCTION}\n\n${input.userPrompt}`;
++
++  const dir = await mkdtemp(join(tmpdir(), "figma-cli-"));
++  let result: CliRunResult;
++  try {
++    result = await runner(bin, args, { input: prompt, cwd: dir, timeoutMs: TIMEOUT_MS });
++  } catch (error) {
++    throw mapRunnerError(error, bin);
++  } finally {
++    await rm(dir, { recursive: true, force: true }).catch(() => {});
++  }
++
++  const text =
++    input.provider === "claude-cli"
++      ? extractClaudeResult(result.stdout, bin)
++      : extractCodexText(result.stdout, bin);
++
++  return parseGeneratedChangeText(text, bin);
++}
++
++function mapRunnerError(error: unknown, bin: string): ProviderRequestError {
++  const err = error as { code?: string; killed?: boolean; stderr?: string; message?: string };
++  if (err?.code === "ENOENT") {
++    return new ProviderRequestError(`${bin} não encontrado no PATH`, 502);
++  }
++  if (err?.killed) {
++    return new ProviderRequestError(`Geração pela CLI (${bin}) excedeu o tempo limite`, 504);
++  }
++  const detail = (err?.stderr ?? "").trim().slice(-500) || err?.message || "erro desconhecido";
++  return new ProviderRequestError(`CLI ${bin} falhou: ${detail}`, 502);
++}
++
++function extractClaudeResult(stdout: string, bin: string): string {
++  let envelope: unknown;
++  try {
++    envelope = JSON.parse(stdout);
++  } catch {
++    throw new ProviderRequestError(`CLI ${bin} retornou envelope não-JSON`);
++  }
++  if (
++    envelope &&
++    typeof envelope === "object" &&
++    typeof (envelope as { result?: unknown }).result === "string"
++  ) {
++    return (envelope as { result: string }).result;
++  }
++  throw new ProviderRequestError(`CLI ${bin} não retornou campo "result"`);
++}
++
++function extractCodexText(stdout: string, bin: string): string {
++  const texts: string[] = [];
++  for (const line of stdout.split("\n")) {
++    const trimmed = line.trim();
++    if (!trimmed) continue;
++    let event: unknown;
++    try {
++      event = JSON.parse(trimmed);
++    } catch {
++      continue;
++    }
++    const candidate =
++      pickString(event, ["item", "text"]) ??
++      pickString(event, ["text"]) ??
++      pickString(event, ["message"]) ??
++      pickString(event, ["item", "message"]);
++    if (candidate) texts.push(candidate);
++  }
++  const last = texts.at(-1);
++  if (!last) throw new ProviderRequestError(`CLI ${bin} não produziu mensagem de agente`);
++  return last;
++}
++
++function pickString(value: unknown, path: string[]): string | undefined {
++  let current: unknown = value;
++  for (const key of path) {
++    if (!current || typeof current !== "object") return undefined;
++    current = (current as Record<string, unknown>)[key];
++  }
++  return typeof current === "string" ? current : undefined;
++}
++
++function parseGeneratedChangeText(text: string, bin: string): unknown {
++  const json = extractJsonObject(text);
++  try {
++    return JSON.parse(json);
++  } catch {
++    throw new ProviderRequestError(`CLI ${bin} retornou JSON malformado`);
++  }
++}
++
++function extractJsonObject(text: string): string {
++  const fenced = text.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
++  const start = fenced.indexOf("{");
++  const end = fenced.lastIndexOf("}");
++  if (start === -1 || end === -1 || end < start) return fenced;
++  return fenced.slice(start, end + 1);
++}
++
++const defaultCliRunner: CliRunner = (bin, args, { input, cwd, timeoutMs }) =>
++  new Promise<CliRunResult>((resolve, reject) => {
++    const child = execFile(
++      bin,
++      args,
++      { cwd, timeout: timeoutMs, maxBuffer: MAX_BUFFER },
++      (error, stdout, stderr) => {
++        if (error) {
++          (error as { stderr?: string }).stderr = stderr;
++          reject(error);
++          return;
++        }
++        resolve({ stdout, stderr });
++      },
++    );
++    child.stdin?.end(input);
++  });
++
++export async function isBinaryAvailable(
++  bin: string,
++  env: NodeJS.ProcessEnv = process.env,
++  accessFn: typeof fsAccess = fsAccess,
++): Promise<boolean> {
++  const override =
++    bin === "claude" ? env.LIKE_FIGMA_CLAUDE_BIN : bin === "codex" ? env.LIKE_FIGMA_CODEX_BIN : undefined;
++  const target = override ?? bin;
++
++  if (target.includes("/")) {
++    try {
++      await accessFn(target, constants.X_OK);
++      return true;
++    } catch {
++      return false;
++    }
++  }
++
++  const dirs = (env.PATH ?? "").split(delimiter).filter(Boolean);
++  for (const dir of dirs) {
++    try {
++      await accessFn(join(dir, target), constants.X_OK);
++      return true;
++    } catch {
++      // continue
++    }
++  }
++  return false;
++}
++
++export async function detectCliAgents(
++  env: NodeJS.ProcessEnv = process.env,
++  accessFn: typeof fsAccess = fsAccess,
++): Promise<{ claude: boolean; codex: boolean }> {
++  const [claude, codex] = await Promise.all([
++    isBinaryAvailable("claude", env, accessFn),
++    isBinaryAvailable("codex", env, accessFn),
++  ]);
++  return { claude, codex };
++}
++```
++
++- [ ] **Step 4: Rodar os testes**
++
++Run: `npm test -- src/lib/ai/cli-agent.test.ts`
++Expected: PASS (todos os casos).
++
++- [ ] **Step 5: Typecheck**
++
++Run: `npm run typecheck`
++Expected: sem erros.
++
++- [ ] **Step 6: Commit**
++
++```bash
++git add src/lib/ai/cli-agent.ts src/lib/ai/cli-agent.test.ts
++git commit -m "feat: add cli-agent module for claude/codex binaries"
++```
++
++---
++
++### Task 4: Ligar o dispatch em `handleGenerateRequest`
++
++Faz o request CLI fluir de ponta a ponta e corrige o texto de referência binária para o modo CLI.
++
++**Files:**
++- Modify: `src/lib/ai/generate.ts` (assinatura de `handleGenerateRequest`, dispatch, `binaryReferencePromptNote`)
++- Test: `src/lib/ai/generate.test.ts` (os testes da Task 2 passam a valer)
++
++**Interfaces:**
++- Consumes: `callCliAgent`, `CliRunner` de `@/lib/ai/cli-agent`.
++- Produces: `handleGenerateRequest(rawInput: unknown, fetchImpl?: FetchImpl, cliRunner?: CliRunner): Promise<{ change: GeneratedChange }>`.
++
++- [ ] **Step 1: Importar o cli-agent no topo de `generate.ts`**
++
++```ts
++import { callCliAgent, type CliRunner } from "@/lib/ai/cli-agent";
++```
++
++- [ ] **Step 2: Estender a assinatura e o dispatch**
++
++Trocar o cabeçalho:
++
++```ts
++export async function handleGenerateRequest(
++  rawInput: unknown,
++  fetchImpl: FetchImpl = fetch,
++): Promise<{ change: GeneratedChange }> {
++```
++
++por:
++
++```ts
++export async function handleGenerateRequest(
++  rawInput: unknown,
++  fetchImpl: FetchImpl = fetch,
++  cliRunner?: CliRunner,
++): Promise<{ change: GeneratedChange }> {
++```
++
++E trocar o bloco de dispatch:
++
++```ts
++  const change =
++    parsedInput.data.provider === "openai"
++      ? await callOpenAI(parsedInput.data, fetchImpl)
++      : await callAnthropic(parsedInput.data, fetchImpl);
++```
++
++por:
++
++```ts
++  const change = await dispatchProvider(parsedInput.data, fetchImpl, cliRunner);
++```
++
++E adicionar a função helper logo após `handleGenerateRequest`:
++
++```ts
++async function dispatchProvider(
++  input: GenerateRequest,
++  fetchImpl: FetchImpl,
++  cliRunner?: CliRunner,
++): Promise<unknown> {
++  switch (input.provider) {
++    case "openai":
++      return callOpenAI(input, fetchImpl);
++    case "anthropic":
++      return callAnthropic(input, fetchImpl);
++    case "claude-cli":
++    case "codex-cli":
++      return callCliAgent(
++        {
++          provider: input.provider,
++          model: input.model,
++          systemPrompt: SYSTEM_PROMPT,
++          userPrompt: buildUserPrompt(input),
++        },
++        cliRunner,
++      );
++  }
++}
++```
++
++- [ ] **Step 3: Corrigir `binaryReferencePromptNote` para o modo CLI**
++
++No início da função `binaryReferencePromptNote(reference, provider)`, antes das checagens existentes, inserir:
++
++```ts
++  if (provider === "claude-cli" || provider === "codex-cli") {
++    return "Metadata only; the CLI agent receives a text prompt and does not get this file as a block.";
++  }
++```
++
++- [ ] **Step 4: Rodar os testes (incluindo os da Task 2)**
++
++Run: `npm test -- src/lib/ai/generate.test.ts`
++Expected: PASS — "aceita provider claude-cli sem apiKey" e "rejeita provider openai sem apiKey" agora passam, além dos testes originais.
++
++- [ ] **Step 5: Typecheck + lint**
++
++Run: `npm run typecheck && npm run lint`
++Expected: sem erros. (O `switch` cobre os 4 casos do union, sem `default`.)
++
++- [ ] **Step 6: Commit**
++
++```bash
++git add src/lib/ai/generate.ts src/lib/ai/generate.test.ts
++git commit -m "feat: dispatch CLI providers through cli-agent"
++```
++
++---
++
++### Task 5: Rota `GET /api/agents` (doctor)
++
++Expõe quais binários existem para a UI decidir o que mostrar.
++
++**Files:**
++- Create: `src/app/api/agents/route.ts`
++- Test: `src/app/api/agents/route.test.ts`
++
++**Interfaces:**
++- Consumes: `detectCliAgents` de `@/lib/ai/cli-agent`.
++- Produces: `GET` handler que responde `{ claude: boolean, codex: boolean }` (status 200).
++
++- [ ] **Step 1: Escrever o teste falhando**
++
++```ts
++// src/app/api/agents/route.test.ts
++import { expect, it, vi } from "vitest";
++
++it("GET responde com a disponibilidade dos binários", async () => {
++  vi.doMock("@/lib/ai/cli-agent", () => ({
++    detectCliAgents: async () => ({ claude: true, codex: false }),
++  }));
++  const { GET } = await import("@/app/api/agents/route");
++  const response = await GET();
++  expect(response.status).toBe(200);
++  await expect(response.json()).resolves.toEqual({ claude: true, codex: false });
++  vi.resetModules();
++});
++```
++
++- [ ] **Step 2: Rodar para ver falhar**
++
++Run: `npm test -- src/app/api/agents/route.test.ts`
++Expected: FAIL (módulo da rota não existe).
++
++- [ ] **Step 3: Implementar a rota**
++
++```ts
++// src/app/api/agents/route.ts
++import { NextResponse } from "next/server";
++
++import { detectCliAgents } from "@/lib/ai/cli-agent";
++
++export async function GET() {
++  const agents = await detectCliAgents();
++  return NextResponse.json(agents);
++}
++```
++
++- [ ] **Step 4: Rodar o teste**
++
++Run: `npm test -- src/app/api/agents/route.test.ts`
++Expected: PASS.
++
++- [ ] **Step 5: Commit**
++
++```bash
++git add src/app/api/agents/route.ts src/app/api/agents/route.test.ts
++git commit -m "feat: add /api/agents doctor route"
++```
++
++---
++
++### Task 6: Persistir preferências dos novos providers
++
++`loadProviderPreferences` hoje rejeita qualquer provider que não seja openai/anthropic. Precisa aceitar os CLI.
++
++**Files:**
++- Modify: `src/lib/storage/projects.ts` (`loadProviderPreferences`, ~linha 106) — e note que `model` pode ser vazio no modo CLI.
++- Test: `src/lib/storage/projects.test.ts`
++
++**Interfaces:**
++- Produces: `loadProviderPreferences()` retorna prefs para os 4 providers; para providers CLI aceita `model` vazio.
++
++- [ ] **Step 1: Escrever o teste falhando**
++
++Adicionar em `src/lib/storage/projects.test.ts`:
++
++```ts
++it("carrega preferências de provider CLI com modelo vazio", () => {
++  localStorage.setItem("like-figma.provider", JSON.stringify({ provider: "claude-cli", model: "" }));
++  const prefs = loadProviderPreferences();
++  expect(prefs).toEqual({ provider: "claude-cli", model: "" });
++});
++```
++
++Garantir que `loadProviderPreferences` está importado no teste.
++
++- [ ] **Step 2: Rodar para ver falhar**
++
++Run: `npm test -- src/lib/storage/projects.test.ts`
++Expected: FAIL (retorna `undefined` porque provider não é openai/anthropic e model é vazio).
++
++- [ ] **Step 3: Atualizar `loadProviderPreferences`**
++
++Substituir o corpo do `try` de `loadProviderPreferences`:
++
++```ts
++    const parsed = JSON.parse(raw) as Omit<ProviderPreferences, "apiKey">;
++    if (parsed.provider !== "openai" && parsed.provider !== "anthropic") return undefined;
++    if (!parsed.model) return undefined;
++    return parsed;
++```
++
++por:
++
++```ts
++    const parsed = JSON.parse(raw) as Omit<ProviderPreferences, "apiKey">;
++    const validProviders = ["openai", "anthropic", "claude-cli", "codex-cli"];
++    if (!validProviders.includes(parsed.provider)) return undefined;
++    const isCli = parsed.provider === "claude-cli" || parsed.provider === "codex-cli";
++    if (!isCli && !parsed.model) return undefined;
++    return { provider: parsed.provider, model: parsed.model ?? "" };
++```
++
++- [ ] **Step 4: Rodar os testes**
++
++Run: `npm test -- src/lib/storage/projects.test.ts`
++Expected: PASS (novo teste + os existentes).
++
++- [ ] **Step 5: Commit**
++
++```bash
++git add src/lib/storage/projects.ts src/lib/storage/projects.test.ts
++git commit -m "feat: persist CLI provider preferences"
++```
++
++---
++
++### Task 7: UI de Configurações (workspace.tsx + globals.css)
++
++Mostra os providers CLI quando disponíveis, esconde a API key no modo CLI e ajusta o guard de geração. Verificação por typecheck/lint/build + checklist manual (sem testes de componente — o repo não tem esse padrão para `workspace.tsx`).
++
++**Files:**
++- Modify: `src/components/workspace.tsx`
++- Modify: `src/app/globals.css` (opcional — só se o segmented precisar comportar 4 itens)
++
++**Interfaces:**
++- Consumes: `GET /api/agents` → `{ claude: boolean; codex: boolean }`; `ProviderId` estendido; `handleGenerate` existente.
++
++- [ ] **Step 1: Adicionar os modelos default dos providers CLI**
++
++Em `src/components/workspace.tsx` linha 69, estender o `DEFAULT_MODELS`:
++
++```ts
++const DEFAULT_MODELS: Record<ProviderId, string> = {
++  openai: "gpt-5-mini",
++  anthropic: "claude-sonnet-4-5",
++  "claude-cli": "",
++  "codex-cli": "",
++};
++```
++
++- [ ] **Step 2: Estado + fetch da disponibilidade dos agentes**
++
++Perto dos outros `useState` (após a linha 88, `const [model, setModel] = ...`), adicionar:
++
++```ts
++const [cliAgents, setCliAgents] = useState<{ claude: boolean; codex: boolean }>({
++  claude: false,
++  codex: false,
++});
++```
++
++E um efeito (junto aos outros `useEffect` do componente):
++
++```ts
++useEffect(() => {
++  let active = true;
++  fetch("/api/agents")
++    .then((response) => (response.ok ? response.json() : { claude: false, codex: false }))
++    .then((data) => {
++      if (active) setCliAgents({ claude: Boolean(data.claude), codex: Boolean(data.codex) });
++    })
++    .catch(() => {});
++  return () => {
++    active = false;
++  };
++}, []);
++```
++
++Garantir que `useEffect` está no import de `react` (adicionar se faltar).
++
++- [ ] **Step 3: Helper `isCliProvider`**
++
++Logo após as declarações de estado do componente (antes das funções `handle*`), adicionar:
++
++```ts
++const isCliProvider = provider === "claude-cli" || provider === "codex-cli";
++```
++
++- [ ] **Step 4: Botões de provider CLI condicionais**
++
++No segmented control (após o botão "Claude"/anthropic, linha ~625), adicionar:
++
++```tsx
++                    {cliAgents.claude ? (
++                      <button
++                        type="button"
++                        className={provider === "claude-cli" ? "is-selected" : ""}
++                        onClick={() => handleProviderChange("claude-cli")}
++                      >
++                        Claude CLI
++                      </button>
++                    ) : null}
++                    {cliAgents.codex ? (
++                      <button
++                        type="button"
++                        className={provider === "codex-cli" ? "is-selected" : ""}
++                        onClick={() => handleProviderChange("codex-cli")}
++                      >
++                        Codex CLI
++                      </button>
++                    ) : null}
++```
++
++- [ ] **Step 5: Esconder o card de API key no modo CLI**
++
++Envolver o `<div className="settings-card">` do campo "API key" (linha ~632) com a condição, e mostrar uma nota quando CLI:
++
++```tsx
++                {isCliProvider ? (
++                  <p className="drawer-hint">Modo CLI: usa o binário local autenticado, sem API key.</p>
++                ) : (
++                  <div className="settings-card">
++                    {/* ...conteúdo existente do card de API key... */}
++                  </div>
++                )}
++```
++
++E ajustar o label do modelo para indicar opcional no modo CLI (linha ~651):
++
++```tsx
++                  <label className="field-label" htmlFor="model">
++                    Modelo{isCliProvider ? " (opcional)" : ""}
++                  </label>
++```
++
++- [ ] **Step 6: Ajustar o guard de geração**
++
++Em `handleGenerate` (linha ~257), trocar:
++
++```ts
++    if (!apiKey.trim()) {
++      openDrawer("settings");
++      setSettingsNotice("Adicione sua chave de API para criar a tela.");
++      setNotice(null);
++      return;
++    }
++```
++
++por:
++
++```ts
++    if (!isCliProvider && !apiKey.trim()) {
++      openDrawer("settings");
++      setSettingsNotice("Adicione sua chave de API para criar a tela.");
++      setNotice(null);
++      return;
++    }
++```
++
++- [ ] **Step 7: Verificar typecheck, lint e build**
++
++Run: `npm run typecheck && npm run lint && npm run build`
++Expected: sem erros. `Record<ProviderId, string>` agora exige as 4 chaves (garantido no Step 1).
++
++- [ ] **Step 8: Checklist manual (rodar `npm run dev`)**
++
++- Sem binários instalados: só aparecem OpenAI e Claude (HTTP). ✅
++- Com `claude` no PATH: botão "Claude CLI" aparece; ao selecioná-lo o campo de API key some e a nota de CLI aparece. ✅
++- Gerar uma tela com "Claude CLI" selecionado produz um `GeneratedChange` e atualiza a preview. ✅
++
++- [ ] **Step 9: Commit**
++
++```bash
++git add src/components/workspace.tsx src/app/globals.css
++git commit -m "feat: expose CLI providers in settings UI"
++```
++
++---
++
++### Task 8: Documentação (README)
++
++Registrar o novo modo para quem for rodar o app.
++
++**Files:**
++- Modify: `README.md` (seção "O que o app faz" e uma nova subseção)
++
++- [ ] **Step 1: Atualizar o README**
++
++Na lista "O que o app faz", adicionar um item:
++
++```markdown
++- Suporta tambem os binarios locais `claude` e `codex` como provedores (modo CLI), usando a autenticacao da propria CLI, sem API key.
++```
++
++E adicionar uma subseção após "Subindo com Docker Compose":
++
++```markdown
++## Modo CLI (claude / codex)
++
++Se os binarios `claude` (Claude Code) ou `codex` (OpenAI Codex) estiverem no
++PATH da maquina que roda o Next, eles aparecem como provedores em Configuracoes.
++O modo CLI usa a autenticacao da propria ferramenta (sua assinatura), nao precisa
++de API key e o modelo e opcional. Para apontar um caminho customizado use as
++variaveis de ambiente `LIKE_FIGMA_CLAUDE_BIN` e `LIKE_FIGMA_CODEX_BIN`.
++
++Observacao: o modo CLI recebe apenas texto no prompt; referencias de imagem/PDF
++entram somente como metadado.
++```
++
++- [ ] **Step 2: Commit**
++
++```bash
++git add README.md
++git commit -m "docs: document CLI provider mode"
++```
++
++---
++
++## Self-Review
++
++**Spec coverage:**
++- `cli-agent.ts` core → Task 3. ✅
++- `ProviderId` + schema condicional → Task 2. ✅
++- Dispatch em `handleGenerateRequest` → Task 4. ✅
++- `/api/agents` doctor → Task 5. ✅
++- UI (workspace + css) → Task 7. ✅
++- Preferências → Task 6. ✅
++- Segurança (bin fixo, sem shell, stdin, tempdir, timeout) → Task 3 (Global Constraints). ✅
++- Erros (ENOENT/exit/timeout/JSON inválido) → Task 3. ✅
++- Limitação v1 (imagem/PDF só metadado) → Task 4 (`binaryReferencePromptNote`) + README Task 8. ✅
++- Testes cli-agent + generate dispatch → Tasks 3, 4. ✅
++- Evitar import circular (errors.ts) → Task 1. ✅
++
++**Placeholder scan:** sem TBD/TODO; todo passo de código tem código completo. ✅
++
++**Type consistency:** `CliRunner`, `CliAgentInput`, `callCliAgent`, `detectCliAgents`, `isBinaryAvailable`, `handleGenerateRequest(raw, fetch, cliRunner)` usados de forma idêntica entre as tasks 3/4/5. `ProviderId` de 4 membros consistente em types/schema/DEFAULT_MODELS/prefs. ✅
+diff --git a/docs/superpowers/specs/2026-07-01-cli-agent-providers-design.md b/docs/superpowers/specs/2026-07-01-cli-agent-providers-design.md
+new file mode 100644
+index 0000000..348ca29
+--- /dev/null
++++ b/docs/superpowers/specs/2026-07-01-cli-agent-providers-design.md
+@@ -0,0 +1,138 @@
++# CLI agent providers (`claude-cli` / `codex-cli`)
++
++**Data:** 2026-07-01
++**Status:** aprovado para planejamento
++
++## Objetivo
++
++Permitir que o like-figma gere interfaces usando os binários locais `claude`
++(Claude Code CLI) e `codex` (OpenAI Codex CLI) como "providers", além dos
++providers HTTP BYOK já existentes (`openai`, `anthropic`). Espelha o approach do
++projeto `jobrabbit`, que spawna o binário local em vez de chamar a API HTTP —
++mas mantendo o modelo de dados atual do like-figma.
++
++## Princípio central
++
++Os providers CLI se encaixam no **mesmo contrato** dos providers HTTP: recebem
++prompt + arquivos + referências e devolvem um `GeneratedChange` JSON. Todo o
++pipeline a jusante (`applyGeneratedChange` → preview WebContainer → export ZIP)
++permanece inalterado. A única diferença é o transporte: `execFile` de um binário
++local em modo não-interativo no lugar de `fetch` para a API.
++
++## Decisões travadas (via brainstorming)
++
++1. **Binários suportados:** `claude` e `codex` (ambos).
++2. **Modelo de saída:** o CLI devolve o mesmo `GeneratedChange` JSON — reusa o
++   pipeline existente. Não editamos arquivos em disco.
++3. **Auth/modelo:** modo CLI usa a auth própria do binário (assinatura já logada
++   na máquina). Sem campo de API key. Campo de modelo é opcional (`--model` só é
++   passado se preenchido).
++
++## Componentes
++
++### `src/lib/ai/cli-agent.ts` (novo)
++
++Coração da feature.
++
++- `callCliAgent(input, { runner })` — `runner` é injetável (default = wrapper de
++  `node:child_process.execFile`), espelhando o padrão `fetchImpl` de
++  `generate.ts`, tornando a função testável sem spawnar processos reais.
++- Monta o prompt reusando `buildUserPrompt(input)` + `SYSTEM_PROMPT` de
++  `generate.ts` (ambos serão exportados), acrescentando a instrução: "responda
++  com APENAS o JSON do GeneratedChange, sem markdown".
++- **Claude:** `claude -p --output-format json [--model <model>]`, prompt via
++  **stdin** (não argv). Parseia o envelope JSON do Claude, extrai `.result`, e
++  roda o `parseJsonText` existente para obter o `GeneratedChange`.
++- **Codex:** `codex exec --json [--model <model>]`, prompt via **stdin**.
++  Parseia a última mensagem do agente na stream JSON e extrai o JSON embutido.
++- **Segurança:**
++  - Nome do binário é **fixo** (`claude`/`codex`), overridável apenas por env
++    (`LIKE_FIGMA_CLAUDE_BIN` / `LIKE_FIGMA_CODEX_BIN`).
++  - `execFile` **sem shell** (evita injeção de comando).
++  - Prompt entra por **stdin**, nunca por argv (evita limite de tamanho e
++    injeção de flags).
++  - cwd = **tempdir vazio** (o agente só precisa de texto in/out; não deve
++    vasculhar o filesystem do host).
++  - `timeout` (~120s) e `maxBuffer` configurados.
++
++### `src/lib/ai/generate.ts` (alterado)
++
++- `ProviderId` → `"openai" | "anthropic" | "claude-cli" | "codex-cli"`
++  (definido em `src/lib/project/types.ts`).
++- `apiKey` vira condicional no schema Zod: obrigatória para providers HTTP,
++  ignorada/opcional para providers CLI.
++- `handleGenerateRequest`: o dispatch ganha os dois casos CLI → `callCliAgent`.
++  Toda a validação de arquivos/paths/schema/referências permanece igual.
++- Exportar `SYSTEM_PROMPT` e `buildUserPrompt` (hoje privados) para reuso.
++
++### `src/app/api/generate/route.ts`
++
++Sem mudança — já delega tudo para `handleGenerateRequest`.
++
++### `src/app/api/agents/route.ts` (novo, GET)
++
++"Doctor"/preflight: roda `which claude` / `which codex` e devolve
++`{ claude: boolean, codex: boolean }`. A UI só oferece um provider CLI se o
++respectivo binário existir. Espelha `src/core/doctor.rs` do jobrabbit.
++
++### `src/components/workspace.tsx` + `src/app/globals.css` (alterado)
++
++- Segmented control de provider ganha "Claude CLI" e "Codex CLI", exibidos
++  apenas se `/api/agents` reportar o binário como disponível.
++- Com provider CLI ativo: campo de API key some (texto: "usa a CLI local, sem
++  chave"); campo de modelo fica opcional.
++- `loadProviderPreferences` / `persistProviderPreferences` aceitam os novos IDs.
++
++## Fluxo de dados
++
++```
++workspace
++  └─ POST /api/generate { provider:"claude-cli", model?, prompt, files, references, generationSkill }
++       └─ handleGenerateRequest
++            └─ callCliAgent
++                 └─ execFile('claude', ['-p','--output-format','json'], { stdin: prompt, cwd: tmp })
++                      └─ parse envelope → .result → parseJsonText
++                           └─ GeneratedChangeSchema.safeParse
++                                └─ applyGeneratedChange → { change }
++  └─ cliente aplica o change (idêntico ao fluxo HTTP atual)
++```
++
++## Tratamento de erros
++
++- Binário ausente (`ENOENT`) → `ProviderRequestError` "claude não encontrado no
++  PATH" (status 502).
++- Exit code ≠ 0 → `ProviderRequestError` com mensagem + cauda do stderr.
++- Timeout → `ProviderRequestError` "geração excedeu o tempo limite".
++- Saída não-JSON / change inválido → reusa o `ProviderRequestError` de
++  "invalid change" já existente.
++
++## Limitação assumida (v1, YAGNI)
++
++Referências de **texto** entram no prompt normalmente. Imagens/PDF entram
++**apenas como metadado** — `claude -p` / `codex exec` são text-in/text-out.
++Mesma degradação graciosa que o código já aplica hoje para tipos não suportados.
++
++## Testes
++
++`src/lib/ai/cli-agent.test.ts` (novo) com `runner` fake:
++
++1. Parseia envelope JSON do Claude e retorna o `GeneratedChange`.
++2. Parseia saída JSON do Codex e retorna o `GeneratedChange`.
++3. `ENOENT` → erro amigável de binário não encontrado.
++4. Saída não-JSON → `ProviderRequestError`.
++5. Exit code ≠ 0 → `ProviderRequestError` com stderr.
++
++Estender `src/lib/ai/generate.test.ts`:
++
++- Dispatch roteia `claude-cli`/`codex-cli` para `callCliAgent`.
++- `apiKey` opcional quando provider é CLI; obrigatória quando HTTP.
++
++E2E (Playwright) fica **fora de escopo** — depende de binário real na máquina,
++não disponível em CI.
++
++## Fora de escopo
++
++- Edição direta de arquivos em disco pelo CLI.
++- Streaming de tokens para a UI (a geração continua request/response único).
++- Multimodal (imagem/PDF) via CLI.
++- Injeção de API key via env para o subprocesso.
+diff --git a/src/app/api/agents/route.test.ts b/src/app/api/agents/route.test.ts
+new file mode 100644
+index 0000000..70d7285
+--- /dev/null
++++ b/src/app/api/agents/route.test.ts
+@@ -0,0 +1,17 @@
++import { afterEach, describe, expect, it, vi } from "vitest";
++
++describe("GET /api/agents", () => {
++  afterEach(() => {
++    vi.resetModules();
++  });
++
++  it("returns available CLI agents", async () => {
++    vi.doMock("@/lib/ai/cli-agent", () => ({
++      detectCliAgents: async () => ({ claude: true, codex: false }),
++    }));
++    const { GET } = await import("@/app/api/agents/route");
++    const response = await GET();
++    expect(response.status).toBe(200);
++    await expect(response.json()).resolves.toEqual({ claude: true, codex: false });
++  });
++});
+diff --git a/src/app/api/agents/route.ts b/src/app/api/agents/route.ts
+new file mode 100644
+index 0000000..89a29ca
+--- /dev/null
++++ b/src/app/api/agents/route.ts
+@@ -0,0 +1,8 @@
++import { NextResponse } from "next/server";
++
++import { detectCliAgents } from "@/lib/ai/cli-agent";
++
++export async function GET() {
++  const agents = await detectCliAgents();
++  return NextResponse.json(agents);
++}
+diff --git a/src/app/globals.css b/src/app/globals.css
+index c8d1db3..2779fb6 100644
+--- a/src/app/globals.css
++++ b/src/app/globals.css
+@@ -703,20 +703,30 @@ button:disabled {
+   justify-content: center;
+   gap: 7px;
+   padding: 0 10px;
+   font-size: 0.84rem;
+ }
+ 
+ .drawer-notice {
+   padding: 10px 11px;
+ }
+ 
++.drawer-hint {
++  margin: 0;
++  padding: 8px 10px;
++  color: var(--muted);
++  font-size: 0.8rem;
++  border: 1px solid rgba(115, 121, 132, 0.16);
++  border-radius: 6px;
++  background: rgba(115, 121, 132, 0.04);
++}
++
+ .drawer-stack {
+   display: grid;
+   gap: 13px;
+ }
+ 
+ .settings-card {
+   display: grid;
+   gap: 8px;
+ }
+ 
+diff --git a/src/components/workspace.tsx b/src/components/workspace.tsx
+index e2c67a8..b1c2c72 100644
+--- a/src/components/workspace.tsx
++++ b/src/components/workspace.tsx
+@@ -62,20 +62,22 @@ import {
+   loadProject,
+   loadProviderPreferences,
+   saveActiveProjectId,
+   saveProject,
+   saveProviderPreferences,
+ } from "@/lib/storage/projects";
+ 
+ const DEFAULT_MODELS: Record<ProviderId, string> = {
+   openai: "gpt-5-mini",
+   anthropic: "claude-sonnet-4-5",
++  "claude-cli": "",
++  "codex-cli": "",
+ };
+ 
+ type ActiveDrawer = "settings" | "files" | "projects" | null;
+ type SkillNotice = { tone: "success" | "error"; message: string };
+ 
+ const promptExamples = [
+   "Landing page para uma cafeteria de bairro",
+   "Dashboard simples de vendas com cards e grafico",
+   "Tela de login acolhedora para um app financeiro",
+ ];
+@@ -93,20 +95,25 @@ export function Workspace() {
+   const [activeDrawer, setActiveDrawer] = useState<ActiveDrawer>(null);
+   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
+   const [skillUrl, setSkillUrl] = useState("");
+   const [skillNotice, setSkillNotice] = useState<SkillNotice | null>(null);
+   const [isLoadingSkill, setIsLoadingSkill] = useState(false);
+   const [referenceNotice, setReferenceNotice] = useState<string | null>(null);
+   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+   const apiKeyInputRef = useRef<HTMLInputElement>(null);
+   const referenceInputRef = useRef<HTMLInputElement>(null);
+ 
++  const [cliAgents, setCliAgents] = useState<{ claude: boolean; codex: boolean }>({
++    claude: false,
++    codex: false,
++  });
++
+   useEffect(() => {
+     let cancelled = false;
+ 
+     async function bootWorkspace() {
+       const preferences = loadProviderPreferences();
+       if (preferences) {
+         setProvider(preferences.provider);
+         setModel(preferences.model);
+       }
+ 
+@@ -143,27 +150,42 @@ export function Workspace() {
+   useEffect(() => {
+     if (activeDrawer !== "settings") return;
+ 
+     const focusTimer = window.setTimeout(() => {
+       apiKeyInputRef.current?.focus();
+     }, 0);
+ 
+     return () => window.clearTimeout(focusTimer);
+   }, [activeDrawer, settingsNotice]);
+ 
++  useEffect(() => {
++    let active = true;
++    fetch("/api/agents")
++      .then((response) => (response.ok ? response.json() : { claude: false, codex: false }))
++      .then((data) => {
++        if (active) setCliAgents({ claude: Boolean(data.claude), codex: Boolean(data.codex) });
++      })
++      .catch(() => {});
++    return () => {
++      active = false;
++    };
++  }, []);
++
+   const filePaths = useMemo(() => {
+     return Object.keys(project?.files ?? {}).sort((a, b) => a.localeCompare(b));
+   }, [project?.files]);
+ 
+   const selectedContent = project?.files[selectedPath] ?? "";
+   const selectedReference = project?.references.find((reference) => reference.projectPath === selectedPath);
+ 
++  const isCliProvider = provider === "claude-cli" || provider === "codex-cli";
++
+   async function refreshSummaries() {
+     setSummaries(await listProjectSummaries());
+   }
+ 
+   function openDrawer(drawer: Exclude<ActiveDrawer, null>) {
+     setActiveDrawer(drawer);
+     if (drawer === "settings" && project) {
+       setSkillUrl(project.generationSkill.source === "github" ? project.generationSkill.sourceUrl : "");
+       setSkillNotice(null);
+     }
+@@ -248,21 +270,21 @@ export function Workspace() {
+     await persist({ ...project, name });
+   }
+ 
+   async function handleGenerate(event: FormEvent<HTMLFormElement>) {
+     event.preventDefault();
+     if (!project || isGenerating) return;
+ 
+     const prompt = draft.trim();
+     if (!prompt) return;
+ 
+-    if (!apiKey.trim()) {
++    if (!isCliProvider && !apiKey.trim()) {
+       openDrawer("settings");
+       setSettingsNotice("Adicione sua chave de API para criar a tela.");
+       setNotice(null);
+       return;
+     }
+ 
+     setNotice(null);
+     setSettingsNotice(null);
+     setReferenceNotice(null);
+     setDraft("");
+@@ -620,45 +642,67 @@ export function Workspace() {
+                     >
+                       OpenAI
+                     </button>
+                     <button
+                       type="button"
+                       className={provider === "anthropic" ? "is-selected" : ""}
+                       onClick={() => handleProviderChange("anthropic")}
+                     >
+                       Claude
+                     </button>
++                    {cliAgents.claude ? (
++                      <button
++                        type="button"
++                        className={provider === "claude-cli" ? "is-selected" : ""}
++                        onClick={() => handleProviderChange("claude-cli")}
++                      >
++                        Claude CLI
++                      </button>
++                    ) : null}
++                    {cliAgents.codex ? (
++                      <button
++                        type="button"
++                        className={provider === "codex-cli" ? "is-selected" : ""}
++                        onClick={() => handleProviderChange("codex-cli")}
++                      >
++                        Codex CLI
++                      </button>
++                    ) : null}
+                   </div>
+                 </div>
+ 
+-                <div className="settings-card">
+-                  <label className="field-label" htmlFor="api-key">
+-                    API key
+-                  </label>
+-                  <div className="key-input">
+-                    <KeyRound size={16} aria-hidden="true" />
+-                    <input
+-                      ref={apiKeyInputRef}
+-                      id="api-key"
+-                      aria-label="API key"
+-                      value={apiKey}
+-                      onChange={(event) => setApiKey(event.target.value)}
+-                      type="password"
+-                      autoComplete="off"
+-                      placeholder="Cole sua chave aqui"
+-                    />
++                {isCliProvider ? (
++                  <p className="drawer-hint">Modo CLI: usa o binário local autenticado, sem API key.</p>
++                ) : (
++                  <div className="settings-card">
++                    <label className="field-label" htmlFor="api-key">
++                      API key
++                    </label>
++                    <div className="key-input">
++                      <KeyRound size={16} aria-hidden="true" />
++                      <input
++                        ref={apiKeyInputRef}
++                        id="api-key"
++                        aria-label="API key"
++                        value={apiKey}
++                        onChange={(event) => setApiKey(event.target.value)}
++                        type="password"
++                        autoComplete="off"
++                        placeholder="Cole sua chave aqui"
++                      />
++                    </div>
+                   </div>
+-                </div>
++                )}
+ 
+                 <div className="settings-card">
+                   <label className="field-label" htmlFor="model">
+-                    Modelo
++                    Modelo{isCliProvider ? " (opcional)" : ""}
+                   </label>
+                   <input
+                     id="model"
+                     className="text-input"
+                     value={model}
+                     onChange={(event) => handleModelChange(event.target.value)}
+                   />
+                 </div>
+ 
+                 <div className="settings-card generation-skill-card">
+diff --git a/src/lib/ai/cli-agent.test.ts b/src/lib/ai/cli-agent.test.ts
+new file mode 100644
+index 0000000..925718a
+--- /dev/null
++++ b/src/lib/ai/cli-agent.test.ts
+@@ -0,0 +1,84 @@
++import { expect, it, vi } from "vitest";
++
++import { callCliAgent, isBinaryAvailable, type CliRunner } from "@/lib/ai/cli-agent";
++import { ProviderRequestError } from "@/lib/ai/errors";
++
++const change = { summary: "ok", files: [], notes: [], errors: [] };
++const base = { systemPrompt: "SYS", userPrompt: "faz um card" };
++
++it("parseia o envelope JSON do Claude", async () => {
++  const runner: CliRunner = async (bin, args, opts) => {
++    expect(bin).toBe("claude");
++    expect(args).toEqual(["-p", "--output-format", "json"]);
++    expect(opts.input).toContain("faz um card");
++    return { stdout: JSON.stringify({ result: JSON.stringify(change) }), stderr: "" };
++  };
++  const out = await callCliAgent({ ...base, provider: "claude-cli" }, runner);
++  expect(out).toEqual(change);
++});
++
++it("passa --model quando informado", async () => {
++  const runner: CliRunner = async (_bin, args) => {
++    expect(args).toEqual(["-p", "--output-format", "json", "--model", "claude-opus-4-8"]);
++    return { stdout: JSON.stringify({ result: JSON.stringify(change) }), stderr: "" };
++  };
++  await callCliAgent({ ...base, provider: "claude-cli", model: "claude-opus-4-8" }, runner);
++});
++
++it("parseia a saída JSONL do Codex", async () => {
++  const stdout = [
++    JSON.stringify({ type: "thread.started" }),
++    JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify(change) } }),
++  ].join("\n");
++  const runner: CliRunner = async (bin, args) => {
++    expect(bin).toBe("codex");
++    expect(args).toEqual(["exec", "--json"]);
++    return { stdout, stderr: "" };
++  };
++  const out = await callCliAgent({ ...base, provider: "codex-cli" }, runner);
++  expect(out).toEqual(change);
++});
++
++it("extrai JSON mesmo com cercas markdown na saída do Claude", async () => {
++  const runner: CliRunner = async () => ({
++    stdout: JSON.stringify({ result: "```json\n" + JSON.stringify(change) + "\n```" }),
++    stderr: "",
++  });
++  const out = await callCliAgent({ ...base, provider: "claude-cli" }, runner);
++  expect(out).toEqual(change);
++});
++
++it("mapeia ENOENT para erro amigável", async () => {
++  const runner: CliRunner = async () => {
++    const err = new Error("spawn claude ENOENT") as Error & { code?: string };
++    err.code = "ENOENT";
++    throw err;
++  };
++  await expect(callCliAgent({ ...base, provider: "claude-cli" }, runner)).rejects.toThrow(/não encontrado no PATH/);
++});
++
++it("mapeia exit != 0 incluindo stderr", async () => {
++  const runner: CliRunner = async () => {
++    const err = new Error("Command failed") as Error & { stderr?: string };
++    err.stderr = "boom detail";
++    throw err;
++  };
++  await expect(callCliAgent({ ...base, provider: "codex-cli" }, runner)).rejects.toThrow(/boom detail/);
++});
++
++it("erra em saída não-JSON", async () => {
++  const runner: CliRunner = async () => ({ stdout: JSON.stringify({ result: "não é json" }), stderr: "" });
++  await expect(callCliAgent({ ...base, provider: "claude-cli" }, runner)).rejects.toBeInstanceOf(ProviderRequestError);
++});
++
++it("isBinaryAvailable acha binário no PATH", async () => {
++  const access = vi.fn().mockResolvedValueOnce(undefined);
++  const ok = await isBinaryAvailable("claude", { PATH: "/usr/bin" } as unknown as NodeJS.ProcessEnv, access);
++  expect(ok).toBe(true);
++});
++
++it("isBinaryAvailable retorna false quando ausente", async () => {
++  const access = vi.fn().mockRejectedValue(new Error("no"));
++  const ok = await isBinaryAvailable("codex", { PATH: "/usr/bin:/bin" } as unknown as NodeJS.ProcessEnv, access);
++  expect(ok).toBe(false);
++});
+diff --git a/src/lib/ai/cli-agent.ts b/src/lib/ai/cli-agent.ts
+new file mode 100644
+index 0000000..7ddb1fd
+--- /dev/null
++++ b/src/lib/ai/cli-agent.ts
+@@ -0,0 +1,206 @@
++// src/lib/ai/cli-agent.ts
++import { execFile } from "node:child_process";
++import { constants } from "node:fs";
++import { access as fsAccess, mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { delimiter, join } from "node:path";
++
++import { ProviderRequestError } from "@/lib/ai/errors";
++
++export type CliRunResult = { stdout: string; stderr: string };
++
++export type CliRunner = (
++  bin: string,
++  args: string[],
++  options: { input: string; cwd: string; timeoutMs: number },
++) => Promise<CliRunResult>;
++
++export interface CliAgentInput {
++  provider: "claude-cli" | "codex-cli";
++  model?: string;
++  systemPrompt: string;
++  userPrompt: string;
++}
++
++const TIMEOUT_MS = 120_000;
++const MAX_BUFFER = 20 * 1024 * 1024;
++
++const INSTRUCTION =
++  "Return ONLY a single JSON object matching the required schema. No markdown fences, no prose.";
++
++function binFor(provider: CliAgentInput["provider"]): string {
++  if (provider === "claude-cli") return process.env.LIKE_FIGMA_CLAUDE_BIN ?? "claude";
++  return process.env.LIKE_FIGMA_CODEX_BIN ?? "codex";
++}
++
++function argsFor(provider: CliAgentInput["provider"], model?: string): string[] {
++  const trimmed = model?.trim();
++  if (provider === "claude-cli") {
++    const args = ["-p", "--output-format", "json"];
++    if (trimmed) args.push("--model", trimmed);
++    return args;
++  }
++  const args = ["exec", "--json"];
++  if (trimmed) args.push("--model", trimmed);
++  return args;
++}
++
++export async function callCliAgent(input: CliAgentInput, runner: CliRunner = defaultCliRunner): Promise<unknown> {
++  const bin = binFor(input.provider);
++  const args = argsFor(input.provider, input.model);
++  const prompt = `${input.systemPrompt}\n\n${INSTRUCTION}\n\n${input.userPrompt}`;
++
++  const dir = await mkdtemp(join(tmpdir(), "figma-cli-"));
++  let result: CliRunResult;
++  try {
++    result = await runner(bin, args, { input: prompt, cwd: dir, timeoutMs: TIMEOUT_MS });
++  } catch (error) {
++    throw mapRunnerError(error, bin);
++  } finally {
++    await rm(dir, { recursive: true, force: true }).catch(() => {});
++  }
++
++  const text =
++    input.provider === "claude-cli"
++      ? extractClaudeResult(result.stdout, bin)
++      : extractCodexText(result.stdout, bin);
++
++  return parseGeneratedChangeText(text, bin);
++}
++
++function mapRunnerError(error: unknown, bin: string): ProviderRequestError {
++  const err = error as { code?: string; killed?: boolean; stderr?: string; message?: string };
++  if (err?.code === "ENOENT") {
++    return new ProviderRequestError(`${bin} não encontrado no PATH`, 502);
++  }
++  if (err?.killed) {
++    return new ProviderRequestError(`Geração pela CLI (${bin}) excedeu o tempo limite`, 504);
++  }
++  const detail = (err?.stderr ?? "").trim().slice(-500) || err?.message || "erro desconhecido";
++  return new ProviderRequestError(`CLI ${bin} falhou: ${detail}`, 502);
++}
++
++function extractClaudeResult(stdout: string, bin: string): string {
++  let envelope: unknown;
++  try {
++    envelope = JSON.parse(stdout);
++  } catch {
++    throw new ProviderRequestError(`CLI ${bin} retornou envelope não-JSON`);
++  }
++  if (
++    envelope &&
++    typeof envelope === "object" &&
++    typeof (envelope as { result?: unknown }).result === "string"
++  ) {
++    return (envelope as { result: string }).result;
++  }
++  throw new ProviderRequestError(`CLI ${bin} não retornou campo "result"`);
++}
++
++function extractCodexText(stdout: string, bin: string): string {
++  const texts: string[] = [];
++  for (const line of stdout.split("\n")) {
++    const trimmed = line.trim();
++    if (!trimmed) continue;
++    let event: unknown;
++    try {
++      event = JSON.parse(trimmed);
++    } catch {
++      continue;
++    }
++    const candidate =
++      pickString(event, ["item", "text"]) ??
++      pickString(event, ["text"]) ??
++      pickString(event, ["message"]) ??
++      pickString(event, ["item", "message"]);
++    if (candidate) texts.push(candidate);
++  }
++  const last = texts.at(-1);
++  if (!last) throw new ProviderRequestError(`CLI ${bin} não produziu mensagem de agente`);
++  return last;
++}
++
++function pickString(value: unknown, path: string[]): string | undefined {
++  let current: unknown = value;
++  for (const key of path) {
++    if (!current || typeof current !== "object") return undefined;
++    current = (current as Record<string, unknown>)[key];
++  }
++  return typeof current === "string" ? current : undefined;
++}
++
++function parseGeneratedChangeText(text: string, bin: string): unknown {
++  const json = extractJsonObject(text);
++  try {
++    return JSON.parse(json);
++  } catch {
++    throw new ProviderRequestError(`CLI ${bin} retornou JSON malformado`);
++  }
++}
++
++function extractJsonObject(text: string): string {
++  const fenced = text.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
++  const start = fenced.indexOf("{");
++  const end = fenced.lastIndexOf("}");
++  if (start === -1 || end === -1 || end < start) return fenced;
++  return fenced.slice(start, end + 1);
++}
++
++const defaultCliRunner: CliRunner = (bin, args, { input, cwd, timeoutMs }) =>
++  new Promise<CliRunResult>((resolve, reject) => {
++    const child = execFile(
++      bin,
++      args,
++      { cwd, timeout: timeoutMs, maxBuffer: MAX_BUFFER },
++      (error, stdout, stderr) => {
++        if (error) {
++          (error as { stderr?: string }).stderr = stderr;
++          reject(error);
++          return;
++        }
++        resolve({ stdout, stderr });
++      },
++    );
++    child.stdin?.end(input);
++  });
++
++export async function isBinaryAvailable(
++  bin: string,
++  env: NodeJS.ProcessEnv = process.env,
++  accessFn: typeof fsAccess = fsAccess,
++): Promise<boolean> {
++  const override =
++    bin === "claude" ? env.LIKE_FIGMA_CLAUDE_BIN : bin === "codex" ? env.LIKE_FIGMA_CODEX_BIN : undefined;
++  const target = override ?? bin;
++
++  if (target.includes("/")) {
++    try {
++      await accessFn(target, constants.X_OK);
++      return true;
++    } catch {
++      return false;
++    }
++  }
++
++  const dirs = (env.PATH ?? "").split(delimiter).filter(Boolean);
++  for (const dir of dirs) {
++    try {
++      await accessFn(join(dir, target), constants.X_OK);
++      return true;
++    } catch {
++      // continue
++    }
++  }
++  return false;
++}
++
++export async function detectCliAgents(
++  env: NodeJS.ProcessEnv = process.env,
++  accessFn: typeof fsAccess = fsAccess,
++): Promise<{ claude: boolean; codex: boolean }> {
++  const [claude, codex] = await Promise.all([
++    isBinaryAvailable("claude", env, accessFn),
++    isBinaryAvailable("codex", env, accessFn),
++  ]);
++  return { claude, codex };
++}
+diff --git a/src/lib/ai/errors.ts b/src/lib/ai/errors.ts
+new file mode 100644
+index 0000000..e153465
+--- /dev/null
++++ b/src/lib/ai/errors.ts
+@@ -0,0 +1,17 @@
++export class GenerateRequestError extends Error {
++  constructor(
++    message: string,
++    public readonly status = 400,
++  ) {
++    super(message);
++  }
++}
++
++export class ProviderRequestError extends Error {
++  constructor(
++    message: string,
++    public readonly status = 502,
++  ) {
++    super(message);
++  }
++}
+diff --git a/src/lib/ai/generate.test.ts b/src/lib/ai/generate.test.ts
+index a48957f..12e424e 100644
+--- a/src/lib/ai/generate.test.ts
++++ b/src/lib/ai/generate.test.ts
+@@ -1,13 +1,13 @@
+ import { describe, expect, it, vi } from "vitest";
+ 
+-import { handleGenerateRequest } from "@/lib/ai/generate";
++import { GenerateRequestError, handleGenerateRequest } from "@/lib/ai/generate";
+ import { createDefaultProjectFiles } from "@/lib/project/template";
+ import type { ProjectReference } from "@/lib/project/types";
+ 
+ const request = {
+   provider: "openai" as const,
+   apiKey: "test-key",
+   model: "gpt-5-mini",
+   prompt: "Make a notes app",
+   messages: [],
+   files: createDefaultProjectFiles(),
+@@ -254,20 +254,88 @@ describe("handleGenerateRequest", () => {
+     );
+     expect(content).toContainEqual(
+       expect.objectContaining({
+         type: "document",
+         title: "brief.md",
+         source: { type: "text", media_type: "text/plain", data: "# Brief\nUse the uploaded material." },
+       }),
+     );
+     expect(content.at(-1)).toEqual(expect.objectContaining({ type: "text" }));
+   });
++
++  it("aceita provider claude-cli sem apiKey e roteia pelo cli runner", async () => {
++    const runner = vi.fn(async () => ({
++      stdout: JSON.stringify({
++        result: JSON.stringify({
++          summary: "ok",
++          files: [{ path: "src/App.tsx", content: "export default function App() { return <main>Button</main>; }" }],
++          notes: [],
++          errors: [],
++        }),
++      }),
++      stderr: "",
++    }));
++    const result = await handleGenerateRequest(
++      {
++        provider: "claude-cli",
++        model: "",
++        prompt: "faz um botão",
++        files: { "package.json": "{}" },
++      },
++      fetch,
++      runner,
++    );
++    expect(result.change.summary).toBe("ok");
++  });
++
++  it("rejeita provider openai sem apiKey", async () => {
++    await expect(
++      handleGenerateRequest(
++        { provider: "openai", model: "gpt-5-mini", prompt: "x", files: { "package.json": "{}" } },
++        fetch,
++      ),
++    ).rejects.toBeInstanceOf(GenerateRequestError);
++  });
++
++  it("aceita provider codex-cli sem apiKey e roteia pelo cli runner", async () => {
++    const runner = vi.fn(async () => ({
++      stdout: JSON.stringify({
++        text: JSON.stringify({
++          summary: "ok",
++          files: [{ path: "src/App.tsx", content: "export default function App() { return <main>Button</main>; }" }],
++          notes: [],
++          errors: [],
++        }),
++      }),
++      stderr: "",
++    }));
++    const result = await handleGenerateRequest(
++      {
++        provider: "codex-cli",
++        model: "",
++        prompt: "faz um botão",
++        files: { "package.json": "{}" },
++      },
++      fetch,
++      runner,
++    );
++    expect(result.change.summary).toBe("ok");
++  });
++
++  it("rejeita provider anthropic sem apiKey", async () => {
++    await expect(
++      handleGenerateRequest(
++        { provider: "anthropic", model: "claude-sonnet-4-5", prompt: "x", files: { "package.json": "{}" } },
++        fetch,
++      ),
++    ).rejects.toBeInstanceOf(GenerateRequestError);
++  });
+ });
+ 
+ function textReference(name: string, projectPath: string, size: number): ProjectReference {
+   return {
+     id: `ref-${name}`,
+     name,
+     mimeType: "text/markdown",
+     size,
+     kind: "text",
+     projectPath,
+diff --git a/src/lib/ai/generate.ts b/src/lib/ai/generate.ts
+index 7cce922..731ea54 100644
+--- a/src/lib/ai/generate.ts
++++ b/src/lib/ai/generate.ts
+@@ -1,48 +1,34 @@
+ import { z } from "zod";
+ 
++import { callCliAgent, type CliRunner } from "@/lib/ai/cli-agent";
++import { GenerateRequestError, ProviderRequestError } from "@/lib/ai/errors";
+ import { applyGeneratedChange } from "@/lib/project/apply-files";
+ import {
+   createDefaultGenerationSkill,
+   generationSkillPromptContent,
+   MAX_GENERATION_SKILL_CONTENT_BYTES,
+ } from "@/lib/project/generation-skill";
+ import { GENERATED_CHANGE_JSON_SCHEMA, GeneratedChangeSchema } from "@/lib/project/schema";
+ import { validatePackageJson, validateProjectPath } from "@/lib/project/paths";
+ import {
+   isPdfReference,
+   isSupportedProviderImage,
+   ReferenceValidationError,
+   referenceToDataUrl,
+   validateProjectReferences,
+ } from "@/lib/project/references";
+ import type { GeneratedChange, ProjectFileMap, ProjectReference, ProviderId } from "@/lib/project/types";
+ 
+ type FetchImpl = typeof fetch;
+ 
+-export class GenerateRequestError extends Error {
+-  constructor(
+-    message: string,
+-    public readonly status = 400,
+-  ) {
+-    super(message);
+-  }
+-}
+-
+-export class ProviderRequestError extends Error {
+-  constructor(
+-    message: string,
+-    public readonly status = 502,
+-  ) {
+-    super(message);
+-  }
+-}
++export { GenerateRequestError, ProviderRequestError };
+ 
+ const MessageSchema = z.object({
+   role: z.enum(["user", "assistant"]),
+   content: z.string().max(8000),
+ });
+ 
+ const ProjectReferenceSchema = z.object({
+   id: z.string().min(1).max(120),
+   name: z.string().min(1).max(240),
+   mimeType: z.string().min(1).max(120),
+@@ -62,30 +48,48 @@ const GenerationSkillSchema = z
+     z.object({
+       source: z.literal("github"),
+       name: z.string().min(1).max(120),
+       sourceUrl: z.string().url().max(1000),
+       content: z.string().min(1).max(MAX_GENERATION_SKILL_CONTENT_BYTES),
+       fetchedAt: z.string().min(1).max(80),
+     }),
+   ])
+   .default(createDefaultGenerationSkill);
+ 
+-const GenerateRequestSchema = z.object({
+-  provider: z.enum(["openai", "anthropic"]),
+-  apiKey: z.string().min(1),
+-  model: z.string().min(1).max(120),
+-  prompt: z.string().min(1).max(12000),
+-  messages: z.array(MessageSchema).max(12).default([]),
+-  files: z.record(z.string()),
+-  references: z.array(ProjectReferenceSchema).max(10).default([]),
+-  generationSkill: GenerationSkillSchema,
+-});
++const GenerateRequestSchema = z
++  .object({
++    provider: z.enum(["openai", "anthropic", "claude-cli", "codex-cli"]),
++    apiKey: z.string().max(400).default(""),
++    model: z.string().max(120).default(""),
++    prompt: z.string().min(1).max(12000),
++    messages: z.array(MessageSchema).max(12).default([]),
++    files: z.record(z.string()),
++    references: z.array(ProjectReferenceSchema).max(10).default([]),
++    generationSkill: GenerationSkillSchema,
++  })
++  .superRefine((value, ctx) => {
++    const isHttp = value.provider === "openai" || value.provider === "anthropic";
++    if (isHttp && value.apiKey.trim().length === 0) {
++      ctx.addIssue({
++        code: z.ZodIssueCode.custom,
++        message: "apiKey is required for HTTP providers",
++        path: ["apiKey"],
++      });
++    }
++    if (isHttp && value.model.trim().length === 0) {
++      ctx.addIssue({
++        code: z.ZodIssueCode.custom,
++        message: "model is required for HTTP providers",
++        path: ["model"],
++      });
++    }
++  });
+ 
+ type GenerateRequest = z.infer<typeof GenerateRequestSchema>;
+ 
+ type OpenAIContentBlock =
+   | { type: "input_text"; text: string }
+   | { type: "input_image"; image_url: string; detail: "auto" }
+   | { type: "input_file"; filename: string; file_data: string };
+ 
+ type AnthropicContentBlock =
+   | { type: "text"; text: string }
+@@ -98,51 +102,73 @@ type AnthropicContentBlock =
+       title: string;
+       context?: string;
+       source:
+         | { type: "text"; media_type: "text/plain"; data: string }
+         | { type: "base64"; media_type: string; data: string };
+     };
+ 
+ export async function handleGenerateRequest(
+   rawInput: unknown,
+   fetchImpl: FetchImpl = fetch,
++  cliRunner?: CliRunner,
+ ): Promise<{ change: GeneratedChange }> {
+   const parsedInput = GenerateRequestSchema.safeParse(rawInput);
+   if (!parsedInput.success) {
+     throw new GenerateRequestError(parsedInput.error.issues.map((issue) => issue.message).join("; "));
+   }
+ 
+   validateInputFiles(parsedInput.data.files);
+   validateReferences(parsedInput.data.references, parsedInput.data.files);
+ 
+-  const change =
+-    parsedInput.data.provider === "openai"
+-      ? await callOpenAI(parsedInput.data, fetchImpl)
+-      : await callAnthropic(parsedInput.data, fetchImpl);
++  const change = await dispatchProvider(parsedInput.data, fetchImpl, cliRunner);
+ 
+   const parsedChange = GeneratedChangeSchema.safeParse(change);
+   if (!parsedChange.success) {
+     throw new ProviderRequestError(
+       `Provider returned invalid change: ${parsedChange.error.issues
+         .map((issue) => issue.message)
+         .join("; ")}`,
+     );
+   }
+ 
+   const applied = applyGeneratedChange(parsedInput.data.files, parsedChange.data);
+   if (!applied.ok) {
+     throw new ProviderRequestError(applied.error);
+   }
+ 
+   return { change: applied.change };
+ }
+ 
++async function dispatchProvider(
++  input: GenerateRequest,
++  fetchImpl: FetchImpl,
++  cliRunner?: CliRunner,
++): Promise<unknown> {
++  switch (input.provider) {
++    case "openai":
++      return callOpenAI(input, fetchImpl);
++    case "anthropic":
++      return callAnthropic(input, fetchImpl);
++    case "claude-cli":
++    case "codex-cli":
++      return callCliAgent(
++        {
++          provider: input.provider,
++          model: input.model,
++          systemPrompt: SYSTEM_PROMPT,
++          userPrompt: buildUserPrompt(input),
++        },
++        cliRunner,
++      );
++  }
++}
++
+ async function callOpenAI(input: GenerateRequest, fetchImpl: FetchImpl): Promise<unknown> {
+   const response = await fetchImpl("https://api.openai.com/v1/responses", {
+     method: "POST",
+     headers: {
+       Authorization: `Bearer ${input.apiKey}`,
+       "Content-Type": "application/json",
+     },
+     body: JSON.stringify({
+       model: input.model,
+       instructions: SYSTEM_PROMPT,
+@@ -352,20 +378,24 @@ function buildReferencePrompt(input: GenerateRequest): string {
+       if (reference.kind === "text") {
+         return `${metadata.join("\n")}\n\n${truncateFile(input.files[reference.projectPath] ?? "")}`;
+       }
+ 
+       return `${metadata.join("\n")}\n${binaryReferencePromptNote(reference, input.provider)}`;
+     })
+     .join("\n\n");
+ }
+ 
+ function binaryReferencePromptNote(reference: ProjectReference, provider: ProviderId): string {
++  if (provider === "claude-cli" || provider === "codex-cli") {
++    return "Metadata only; the CLI agent receives a text prompt and does not get this file as a block.";
++  }
++
+   if (isSupportedProviderImage(reference)) {
+     return provider === "openai"
+       ? "Attached as an input_image block."
+       : "Attached as an image content block.";
+   }
+ 
+   if (isPdfReference(reference)) {
+     return provider === "openai"
+       ? "Attached as an input_file block."
+       : "Attached as a document content block.";
+diff --git a/src/lib/project/types.ts b/src/lib/project/types.ts
+index 49f2ef5..37a6de8 100644
+--- a/src/lib/project/types.ts
++++ b/src/lib/project/types.ts
+@@ -1,13 +1,13 @@
+ import type { GenerationSkill } from "@/lib/project/generation-skill";
+ 
+-export type ProviderId = "openai" | "anthropic";
++export type ProviderId = "openai" | "anthropic" | "claude-cli" | "codex-cli";
+ 
+ export type ProjectFileMap = Record<string, string>;
+ 
+ export type MessageRole = "user" | "assistant";
+ 
+ export type ProjectReferenceKind = "text" | "binary";
+ 
+ export interface ChatMessage {
+   id: string;
+   role: MessageRole;
+diff --git a/src/lib/storage/projects.test.ts b/src/lib/storage/projects.test.ts
+index 66263cf..bd29554 100644
+--- a/src/lib/storage/projects.test.ts
++++ b/src/lib/storage/projects.test.ts
+@@ -1,19 +1,20 @@
+ import "fake-indexeddb/auto";
+ 
+ import { beforeEach, describe, expect, it } from "vitest";
+ 
+ import {
+   clearProjectStorageForTests,
+   createProject,
+   loadProject,
+   listProjectSummaries,
++  loadProviderPreferences,
+   migrateProject,
+   saveProject,
+   saveProviderPreferences,
+ } from "@/lib/storage/projects";
+ 
+ describe("project persistence", () => {
+   beforeEach(async () => {
+     localStorage.clear();
+     await clearProjectStorageForTests();
+   });
+@@ -88,11 +89,27 @@ describe("project persistence", () => {
+ 
+   it("does not persist BYOK API keys in provider preferences", () => {
+     saveProviderPreferences({
+       provider: "openai",
+       model: "gpt-5-mini",
+       apiKey: "test-secret",
+     });
+ 
+     expect(localStorage.getItem("like-figma.provider")).not.toContain("test-secret");
+   });
++
++  it("carrega preferências de provider CLI com modelo vazio", () => {
++    localStorage.setItem("like-figma.provider", JSON.stringify({ provider: "claude-cli", model: "" }));
++    const prefs = loadProviderPreferences();
++    expect(prefs).toEqual({ provider: "claude-cli", model: "" });
++  });
++
++  it("rejeita openai com model vazio", () => {
++    localStorage.setItem("like-figma.provider", JSON.stringify({ provider: "openai", model: "" }));
++    expect(loadProviderPreferences()).toBeUndefined();
++  });
++
++  it("rejeita anthropic com model vazio", () => {
++    localStorage.setItem("like-figma.provider", JSON.stringify({ provider: "anthropic", model: "" }));
++    expect(loadProviderPreferences()).toBeUndefined();
++  });
+ });
+diff --git a/src/lib/storage/projects.ts b/src/lib/storage/projects.ts
+index bf2e578..a893202 100644
+--- a/src/lib/storage/projects.ts
++++ b/src/lib/storage/projects.ts
+@@ -96,23 +96,25 @@ export function saveProviderPreferences(preferences: ProviderPreferences): void
+   };
+   localStorage.setItem(PROVIDER_STORAGE_KEY, JSON.stringify(persisted));
+ }
+ 
+ export function loadProviderPreferences(): Omit<ProviderPreferences, "apiKey"> | undefined {
+   const raw = localStorage.getItem(PROVIDER_STORAGE_KEY);
+   if (!raw) return undefined;
+ 
+   try {
+     const parsed = JSON.parse(raw) as Omit<ProviderPreferences, "apiKey">;
+-    if (parsed.provider !== "openai" && parsed.provider !== "anthropic") return undefined;
+-    if (!parsed.model) return undefined;
+-    return parsed;
++    const validProviders = ["openai", "anthropic", "claude-cli", "codex-cli"];
++    if (!validProviders.includes(parsed.provider)) return undefined;
++    const isCli = parsed.provider === "claude-cli" || parsed.provider === "codex-cli";
++    if (!isCli && !parsed.model) return undefined;
++    return { provider: parsed.provider, model: parsed.model ?? "" };
+   } catch {
+     return undefined;
+   }
+ }
+ 
+ export function saveActiveProjectId(projectId: string): void {
+   localStorage.setItem(ACTIVE_PROJECT_KEY, projectId);
+ }
+ 
+ export function loadActiveProjectId(): string | undefined {
+
+--- Changes ---
+
+README.md
+  @@ -14,20 +14,21 @@ IndexedDB do navegador, e a chave de API e fornecida pelo usuario em modo BYOK
+  +- Suporta tambem os binarios locais `claude` e `codex` como provedores (modo CLI), usando a autenticacao da propria CLI, sem API key.
+   
+   ## Requisitos
+   
+   - Node.js 24 ou compativel com as dependencias atuais.
+   - npm.
+   - Um navegador moderno. Para preview com WebContainer, Chrome/Chromium tende a
+     ser a opcao mais confiavel.
+   - Uma chave de API da OpenAI ou Anthropic para usar a geracao real.
+   
+   ## Subindo localmente
+  @@ -67,20 +68,31 @@ Abra:
+  +## Modo CLI (claude / codex)
+  +
+  +Se os binarios `claude` (Claude Code) ou `codex` (OpenAI Codex) estiverem no
+  +PATH da maquina que roda o Next, eles aparecem como provedores em Configuracoes.
+  +O modo CLI usa a autenticacao da propria ferramenta (sua assinatura), nao precisa
+  +de API key e o modelo e opcional. Para apontar um caminho customizado use as
+  +variaveis de ambiente `LIKE_FIGMA_CLAUDE_BIN` e `LIKE_FIGMA_CODEX_BIN`.
+  +
+  +Observacao: o modo CLI recebe apenas texto no prompt; referencias de imagem/PDF
+  +entram somente como metadado.
+  +
+   ## Comandos uteis
+   
+   ```bash
+   npm run lint
+   npm run typecheck
+   npm test
+   npm run build
+   npm run test:e2e
+   npm audit --omit=dev
+   ```
+  +12 -0
+
+docs/superpowers/plans/2026-07-01-cli-agent-providers.md
+  @@ -0,0 +1,994 @@
+  +# CLI Agent Providers Implementation Plan
+  +
+  +> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+  +
+  +**Goal:** Adicionar os providers `claude-cli` e `codex-cli` ao like-figma, que geram um `GeneratedChange` invocando o binário local `claude`/`codex` em modo não-interativo, reusando todo o pipeline existente.
+  +
+  +**Architecture:** Um novo módulo `cli-agent.ts` spawna o binário via `execFile` (sem shell, prompt via stdin, cwd em tempdir vazio) e devolve o mesmo JSON `GeneratedChange` dos providers HTTP. `handleGenerateRequest` ganha o dispatch para os dois casos CLI. As classes de erro são extraídas para `errors.ts` para evitar import circular. Uma rota `GET /api/agents` reporta quais binários existem, e a UI mostra os providers CLI condicionalmente, escondendo o campo de API key.
+  +
+  +**Tech Stack:** Next.js 16, React 19, TypeScript, Zod, Vitest, `node:child_process`, `node:fs/promises`.
+  +
+  +## Global Constraints
+  +
+  +- Projeto gerado permanece Vite + React + TypeScript (inalterado).
+  +- Nomes de binário são fixos: `claude` e `codex`, overridáveis apenas por env `LIKE_FIGMA_CLAUDE_BIN` / `LIKE_FIGMA_CODEX_BIN`.
+  +- Spawn sempre com `execFile` **sem shell**; prompt entra por **stdin**, nunca por argv.
+  +- cwd do subprocesso = tempdir vazio criado com `mkdtemp`, removido em `finally`.
+  +- Timeout do subprocesso = 120000 ms; `maxBuffer` = 20 MB.
+  +- Providers CLI **não** usam API key; campo de modelo é opcional (só passa `--model` se preenchido).
+  +- Referências de texto entram no prompt; imagem/PDF entram apenas como metadado no modo CLI.
+  +- Todo passo de código segue TDD: teste falhando → implementação mínima → teste passando → commit.
+  +- Comandos: `npm test` (vitest), `npm run typecheck`, `npm run lint`, `npm run build`.
+  +
+  +---
+  +
+  +### Task 1: Extrair classes de erro para `errors.ts`
+  +
+  +Refactor puro que quebra o futuro ciclo de import entre `generate.ts` e `cli-agent.ts`. Sem mudança de comportamento.
+  +
+  +**Files:**
+  +- Create: `src/lib/ai/errors.ts`
+  +- Modify: `src/lib/ai/generate.ts` (remove as duas classes, importa e re-exporta de `errors.ts`)
+  +
+  +**Interfaces:**
+  +- Produces: `GenerateRequestError` (`constructor(message: string, status = 400)`, campo `status: number`) e `ProviderRequestError` (`constructor(message: string, status = 502)`, campo `status: number`), exportadas de `src/lib/ai/errors.ts` e re-exportadas de `src/lib/ai/generate.ts`.
+  +
+  +- [ ] **Step 1: Criar `errors.ts`**
+  +
+  +```ts
+  +// src/lib/ai/errors.ts
+  +export class GenerateRequestError extends Error {
+  +  constructor(
+  +    message: string,
+  +    public readonly status = 400,
+  +  ) {
+  +    super(message);
+  +  }
+  +}
+  +
+  +export class ProviderRequestError extends Error {
+  +  constructor(
+  +    message: string,
+  +    public readonly status = 502,
+  +  ) {
+  +    super(message);
+  +  }
+  +}
+  +```
+  +
+  +- [ ] **Step 2: Remover as classes de `generate.ts` e importar de `errors.ts`**
+  +
+  +Em `src/lib/ai/generate.ts`, apagar os dois blocos `export class GenerateRequestError {...}` e `export class ProviderRequestError {...}` (linhas ~22-40). Adicionar no topo, junto aos outros imports:
+  +
+  +```ts
+  +import { GenerateRequestError, ProviderRequestError } from "@/lib/ai/errors";
+  +```
+  +
+  +E logo abaixo dos imports, re-exportar para não quebrar `route.ts`:
+  +
+  +```ts
+  +export { GenerateRequestError, ProviderRequestError };
+  +```
+  +
+  +- [ ] **Step 3: Rodar a suíte para garantir que nada quebrou**
+  +
+  +Run: `npm test -- src/lib/ai/generate.test.ts`
+  +Expected: PASS (mesmos testes de antes).
+  +
+  +- [ ] **Step 4: Typecheck**
+  +
+  +Run: `npm run typecheck`
+  +Expected: sem erros.
+  +
+  +- [ ] **Step 5: Commit**
+  +
+  +```bash
+  +git add src/lib/ai/errors.ts src/lib/ai/generate.ts
+  +git commit -m "refactor: extract AI error classes into errors.ts"
+  +```
+  +
+  +---
+  +
+  +### Task 2: Estender `ProviderId` e o schema de request
+  +
+  +Adiciona os dois novos providers ao tipo e ao Zod, tornando `apiKey`/`model` condicionais.
+  +
+  +**Files:**
+  +- Modify: `src/lib/project/types.ts:3`
+  +- Modify: `src/lib/ai/generate.ts` (GenerateRequestSchema, ~linha 70-88)
+  +- Test: `src/lib/ai/generate.test.ts`
+  +
+  ... (894 lines truncated)
+  +994 -0
+
+docs/superpowers/specs/2026-07-01-cli-agent-providers-design.md
+  @@ -0,0 +1,138 @@
+  +# CLI agent providers (`claude-cli` / `codex-cli`)
+  +
+  +**Data:** 2026-07-01
+  +**Status:** aprovado para planejamento
+  +
+  +## Objetivo
+  +
+  +Permitir que o like-figma gere interfaces usando os binários locais `claude`
+  +(Claude Code CLI) e `codex` (OpenAI Codex CLI) como "providers", além dos
+  +providers HTTP BYOK já existentes (`openai`, `anthropic`). Espelha o approach do
+  +projeto `jobrabbit`, que spawna o binário local em vez de chamar a API HTTP —
+  +mas mantendo o modelo de dados atual do like-figma.
+  +
+  +## Princípio central
+  +
+  +Os providers CLI se encaixam no **mesmo contrato** dos providers HTTP: recebem
+  +prompt + arquivos + referências e devolvem um `GeneratedChange` JSON. Todo o
+  +pipeline a jusante (`applyGeneratedChange` → preview WebContainer → export ZIP)
+  +permanece inalterado. A única diferença é o transporte: `execFile` de um binário
+  +local em modo não-interativo no lugar de `fetch` para a API.
+  +
+  +## Decisões travadas (via brainstorming)
+  +
+  +1. **Binários suportados:** `claude` e `codex` (ambos).
+  +2. **Modelo de saída:** o CLI devolve o mesmo `GeneratedChange` JSON — reusa o
+  +   pipeline existente. Não editamos arquivos em disco.
+  +3. **Auth/modelo:** modo CLI usa a auth própria do binário (assinatura já logada
+  +   na máquina). Sem campo de API key. Campo de modelo é opcional (`--model` só é
+  +   passado se preenchido).
+  +
+  +## Componentes
+  +
+  +### `src/lib/ai/cli-agent.ts` (novo)
+  +
+  +Coração da feature.
+  +
+  +- `callCliAgent(input, { runner })` — `runner` é injetável (default = wrapper de
+  +  `node:child_process.execFile`), espelhando o padrão `fetchImpl` de
+  +  `generate.ts`, tornando a função testável sem spawnar processos reais.
+  +- Monta o prompt reusando `buildUserPrompt(input)` + `SYSTEM_PROMPT` de
+  +  `generate.ts` (ambos serão exportados), acrescentando a instrução: "responda
+  +  com APENAS o JSON do GeneratedChange, sem markdown".
+  +- **Claude:** `claude -p --output-format json [--model <model>]`, prompt via
+  +  **stdin** (não argv). Parseia o envelope JSON do Claude, extrai `.result`, e
+  +  roda o `parseJsonText` existente para obter o `GeneratedChange`.
+  +- **Codex:** `codex exec --json [--model <model>]`, prompt via **stdin**.
+  +  Parseia a última mensagem do agente na stream JSON e extrai o JSON embutido.
+  +- **Segurança:**
+  +  - Nome do binário é **fixo** (`claude`/`codex`), overridável apenas por env
+  +    (`LIKE_FIGMA_CLAUDE_BIN` / `LIKE_FIGMA_CODEX_BIN`).
+  +  - `execFile` **sem shell** (evita injeção de comando).
+  +  - Prompt entra por **stdin**, nunca por argv (evita limite de tamanho e
+  +    injeção de flags).
+  +  - cwd = **tempdir vazio** (o agente só precisa de texto in/out; não deve
+  +    vasculhar o filesystem do host).
+  +  - `timeout` (~120s) e `maxBuffer` configurados.
+  +
+  +### `src/lib/ai/generate.ts` (alterado)
+  +
+  +- `ProviderId` → `"openai" | "anthropic" | "claude-cli" | "codex-cli"`
+  +  (definido em `src/lib/project/types.ts`).
+  +- `apiKey` vira condicional no schema Zod: obrigatória para providers HTTP,
+  +  ignorada/opcional para providers CLI.
+  +- `handleGenerateRequest`: o dispatch ganha os dois casos CLI → `callCliAgent`.
+  +  Toda a validação de arquivos/paths/schema/referências permanece igual.
+  +- Exportar `SYSTEM_PROMPT` e `buildUserPrompt` (hoje privados) para reuso.
+  +
+  +### `src/app/api/generate/route.ts`
+  +
+  +Sem mudança — já delega tudo para `handleGenerateRequest`.
+  +
+  +### `src/app/api/agents/route.ts` (novo, GET)
+  +
+  +"Doctor"/preflight: roda `which claude` / `which codex` e devolve
+  +`{ claude: boolean, codex: boolean }`. A UI só oferece um provider CLI se o
+  +respectivo binário existir. Espelha `src/core/doctor.rs` do jobrabbit.
+  +
+  +### `src/components/workspace.tsx` + `src/app/globals.css` (alterado)
+  +
+  +- Segmented control de provider ganha "Claude CLI" e "Codex CLI", exibidos
+  +  apenas se `/api/agents` reportar o binário como disponível.
+  +- Com provider CLI ativo: campo de API key some (texto: "usa a CLI local, sem
+  +  chave"); campo de modelo fica opcional.
+  +- `loadProviderPreferences` / `persistProviderPreferences` aceitam os novos IDs.
+  +
+  +## Fluxo de dados
+  +
+  +```
+  +workspace
+  +  └─ POST /api/generate { provider:"claude-cli", model?, prompt, files, references, generationSkill }
+  +       └─ handleGenerateRequest
+  +            └─ callCliAgent
+  +                 └─ execFile('claude', ['-p','--output-format','json'], { stdin: prompt, cwd: tmp })
+  +                      └─ parse envelope → .result → parseJsonText
+  +                           └─ GeneratedChangeSchema.safeParse
+  +                                └─ applyGeneratedChange → { change }
+  +  └─ cliente aplica o change (idêntico ao fluxo HTTP atual)
+  +```
+  +
+  +## Tratamento de erros
+  ... (38 lines truncated)
+  +138 -0
+
+src/app/api/agents/route.test.ts
+  @@ -0,0 +1,17 @@
+  +import { afterEach, describe, expect, it, vi } from "vitest";
+  +
+  +describe("GET /api/agents", () => {
+  +  afterEach(() => {
+  +    vi.resetModules();
+  +  });
+  +
+  +  it("returns available CLI agents", async () => {
+  +    vi.doMock("@/lib/ai/cli-agent", () => ({
+  +      detectCliAgents: async () => ({ claude: true, codex: false }),
+  +    }));
+  +    const { GET } = await import("@/app/api/agents/route");
+  +    const response = await GET();
+  +    expect(response.status).toBe(200);
+  +    await expect(response.json()).resolves.toEqual({ claude: true, codex: false });
+  +  });
+  +});
+  +17 -0
+
+src/app/api/agents/route.ts
+  @@ -0,0 +1,8 @@
+  +import { NextResponse } from "next/server";
+  +
+  +import { detectCliAgents } from "@/lib/ai/cli-agent";
+  +
+  +export async function GET() {
+  +  const agents = await detectCliAgents();
+  +  return NextResponse.json(agents);
+  +}
+  +8 -0
+
+src/app/globals.css
+  @@ -703,20 +703,30 @@ button:disabled {
+  +.drawer-hint {
+  +  margin: 0;
+  +  padding: 8px 10px;
+  +  color: var(--muted);
+  +  font-size: 0.8rem;
+  +  border: 1px solid rgba(115, 121, 132, 0.16);
+  +  border-radius: 6px;
+  +  background: rgba(115, 121, 132, 0.04);
+  +}
+  +
+   .drawer-stack {
+     display: grid;
+     gap: 13px;
+   }
+   
+   .settings-card {
+     display: grid;
+     gap: 8px;
+   }
+   
+  +10 -0
+
+src/components/workspace.tsx
+  @@ -62,20 +62,22 @@ import {
+  +  "claude-cli": "",
+  +  "codex-cli": "",
+   };
+   
+   type ActiveDrawer = "settings" | "files" | "projects" | null;
+   type SkillNotice = { tone: "success" | "error"; message: string };
+   
+   const promptExamples = [
+     "Landing page para uma cafeteria de bairro",
+     "Dashboard simples de vendas com cards e grafico",
+     "Tela de login acolhedora para um app financeiro",
+   ];
+  @@ -93,20 +95,25 @@ export function Workspace() {
+  +  const [cliAgents, setCliAgents] = useState<{ claude: boolean; codex: boolean }>({
+  +    claude: false,
+  +    codex: false,
+  +  });
+  +
+     useEffect(() => {
+       let cancelled = false;
+   
+       async function bootWorkspace() {
+         const preferences = loadProviderPreferences();
+         if (preferences) {
+           setProvider(preferences.provider);
+           setModel(preferences.model);
+         }
+   
+  @@ -143,27 +150,42 @@ export function Workspace() {
+  +  useEffect(() => {
+  +    let active = true;
+  +    fetch("/api/agents")
+  +      .then((response) => (response.ok ? response.json() : { claude: false, codex: false }))
+  +      .then((data) => {
+  +        if (active) setCliAgents({ claude: Boolean(data.claude), codex: Boolean(data.codex) });
+  +      })
+  +      .catch(() => {});
+  +    return () => {
+  +      active = false;
+  +    };
+  +  }, []);
+  +
+     const filePaths = useMemo(() => {
+       return Object.keys(project?.files ?? {}).sort((a, b) => a.localeCompare(b));
+     }, [project?.files]);
+   
+     const selectedContent = project?.files[selectedPath] ?? "";
+     const selectedReference = project?.references.find((reference) => reference.projectPath === selectedPath);
+   
+  +  const isCliProvider = provider === "claude-cli" || provider === "codex-cli";
+  +
+     async function refreshSummaries() {
+       setSummaries(await listProjectSummaries());
+     }
+   
+     function openDrawer(drawer: Exclude<ActiveDrawer, null>) {
+       setActiveDrawer(drawer);
+       if (drawer === "settings" && project) {
+         setSkillUrl(project.generationSkill.source === "github" ? project.generationSkill.sourceUrl : "");
+         setSkillNotice(null);
+       }
+  @@ -248,21 +270,21 @@ export function Workspace() {
+  -    if (!apiKey.trim()) {
+  +    if (!isCliProvider && !apiKey.trim()) {
+         openDrawer("settings");
+         setSettingsNotice("Adicione sua chave de API para criar a tela.");
+         setNotice(null);
+         return;
+       }
+   
+       setNotice(null);
+       setSettingsNotice(null);
+       setReferenceNotice(null);
+       setDraft("");
+  @@ -620,45 +642,67 @@ export function Workspace() {
+  +                    {cliAgents.claude ? (
+  +                      <button
+  +                        type="button"
+  +                        className={provider === "claude-cli" ? "is-selected" : ""}
+  +                        onClick={() => handleProviderChange("claude-cli")}
+  +                      >
+  +                        Claude CLI
+  +                      </button>
+  +                    ) : null}
+  +                    {cliAgents.codex ? (
+  +                      <button
+  +                        type="button"
+  +                        className={provider === "codex-cli" ? "is-selected" : ""}
+  +                        onClick={() => handleProviderChange("codex-cli")}
+  +                      >
+  +                        Codex CLI
+  +                      </button>
+  +                    ) : null}
+                     </div>
+                   </div>
+   
+  -                <div className="settings-card">
+  -                  <label className="field-label" htmlFor="api-key">
+  -                    API key
+  -                  </label>
+  -                  <div className="key-input">
+  -                    <KeyRound size={16} aria-hidden="true" />
+  -                    <input
+  -                      ref={apiKeyInputRef}
+  -                      id="api-key"
+  -                      aria-label="API key"
+  -                      value={apiKey}
+  -                      onChange={(event) => setApiKey(event.target.value)}
+  -                      type="password"
+  -                      autoComplete="off"
+  -                      placeholder="Cole sua chave aqui"
+  -                    />
+  +                {isCliProvider ? (
+  +                  <p className="drawer-hint">Modo CLI: usa o binário local autenticado, sem API key.</p>
+  +                ) : (
+  +                  <div className="settings-card">
+  +                    <label className="field-label" htmlFor="api-key">
+  +                      API key
+  +                    </label>
+  +                    <div className="key-input">
+  +                      <KeyRound size={16} aria-hidden="true" />
+  +                      <input
+  +                        ref={apiKeyInputRef}
+  +                        id="api-key"
+  +                        aria-label="API key"
+  +                        value={apiKey}
+  +                        onChange={(event) => setApiKey(event.target.value)}
+  +                        type="password"
+  +                        autoComplete="off"
+  +                        placeholder="Cole sua chave aqui"
+  +                      />
+  +                    </div>
+                     </div>
+  -                </div>
+  +                )}
+   
+                   <div className="settings-card">
+                     <label className="field-label" htmlFor="model">
+  -                    Modelo
+  +                    Modelo{isCliProvider ? " (opcional)" : ""}
+                     </label>
+                     <input
+                       id="model"
+                       className="text-input"
+                       value={model}
+                       onChange={(event) => handleModelChange(event.target.value)}
+                     />
+                   </div>
+   
+                   <div className="settings-card generation-skill-card">
+  +63 -19
+
+src/lib/ai/cli-agent.test.ts
+  @@ -0,0 +1,84 @@
+  +import { expect, it, vi } from "vitest";
+  +
+  +import { callCliAgent, isBinaryAvailable, type CliRunner } from "@/lib/ai/cli-agent";
+  +import { ProviderRequestError } from "@/lib/ai/errors";
+  +
+  +const change = { summary: "ok", files: [], notes: [], errors: [] };
+  +const base = { systemPrompt: "SYS", userPrompt: "faz um card" };
+  +
+  +it("parseia o envelope JSON do Claude", async () => {
+  +  const runner: CliRunner = async (bin, args, opts) => {
+  +    expect(bin).toBe("claude");
+  +    expect(args).toEqual(["-p", "--output-format", "json"]);
+  +    expect(opts.input).toContain("faz um card");
+  +    return { stdout: JSON.stringify({ result: JSON.stringify(change) }), stderr: "" };
+  +  };
+  +  const out = await callCliAgent({ ...base, provider: "claude-cli" }, runner);
+  +  expect(out).toEqual(change);
+  +});
+  +
+  +it("passa --model quando informado", async () => {
+  +  const runner: CliRunner = async (_bin, args) => {
+  +    expect(args).toEqual(["-p", "--output-format", "json", "--model", "claude-opus-4-8"]);
+  +    return { stdout: JSON.stringify({ result: JSON.stringify(change) }), stderr: "" };
+  +  };
+  +  await callCliAgent({ ...base, provider: "claude-cli", model: "claude-opus-4-8" }, runner);
+  +});
+  +
+  +it("parseia a saída JSONL do Codex", async () => {
+  +  const stdout = [
+  +    JSON.stringify({ type: "thread.started" }),
+  +    JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify(change) } }),
+  +  ].join("\n");
+  +  const runner: CliRunner = async (bin, args) => {
+  +    expect(bin).toBe("codex");
+  +    expect(args).toEqual(["exec", "--json"]);
+  +    return { stdout, stderr: "" };
+  +  };
+  +  const out = await callCliAgent({ ...base, provider: "codex-cli" }, runner);
+  +  expect(out).toEqual(change);
+  +});
+  +
+  +it("extrai JSON mesmo com cercas markdown na saída do Claude", async () => {
+  +  const runner: CliRunner = async () => ({
+  +    stdout: JSON.stringify({ result: "```json\n" + JSON.stringify(change) + "\n```" }),
+  +    stderr: "",
+  +  });
+  +  const out = await callCliAgent({ ...base, provider: "claude-cli" }, runner);
+
+... (more changes truncated)
+  +47 -0
+[full diff: rtk git diff --no-compact]
