@@ -118,6 +118,12 @@ createRoot(document.getElementById("root")!).render(
         <h1>${d["template.title"]}</h1>
         <p>${d["template.body"]}</p>
       </section>
+      <footer className="telar-credit">
+        Powered by{" "}
+        <a href="https://renanmpimentel.github.io/telar/" target="_blank" rel="noopener">
+          Telar
+        </a>
+      </footer>
     </main>
   );
 }
@@ -167,6 +173,7 @@ html::-webkit-scrollbar-track {
 }
 
 .shell {
+  position: relative;
   min-height: 100vh;
   display: grid;
   place-items: center;
@@ -205,6 +212,22 @@ p {
   color: #555047;
   font-size: 1.05rem;
   line-height: 1.65;
+}
+
+.telar-credit {
+  position: absolute;
+  bottom: 20px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 0.8rem;
+  color: #8a857a;
+}
+
+.telar-credit a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 `,
   };

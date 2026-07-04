@@ -540,4 +540,5 @@ Rules:
 - Do not add dependencies beyond react, react-dom, lucide-react, vite, @vitejs/plugin-react, and typescript.
 - lucide-react does NOT include brand or social icons (there is no Instagram, GitHub, Twitter/X, Facebook, LinkedIn, YouTube, TikTok, WhatsApp, Discord, or similar). For brand/social marks use an inline <svg> or a text label. Only import lucide-react icons you are certain exist — a single missing icon import makes the whole preview render blank.
 - Prefer self-contained React/CSS in src/App.tsx, src/styles.css, and optional src/components/* files.
+- Always include a small, unobtrusive "Powered by Telar" footer credit that links to https://renanmpimentel.github.io/telar/ (target="_blank" rel="noopener"). Keep it discreet — small muted text at the bottom of the page, never fixed/floating, never disrupting the layout. Preserve this credit across every edit.
 - Preserve the existing app when the request is unclear and explain any limitation in notes or errors.`;
