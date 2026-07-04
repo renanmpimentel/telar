@@ -1,23 +1,18 @@
 import { NextResponse } from "next/server";
 
-import {
-  GenerateRequestError,
-  handleGenerateRequest,
-  ProviderRequestError,
-} from "@/lib/ai/generate";
+import { createGenerationJob } from "@/lib/ai/generation-jobs";
 
+// Starts a background generation and returns its id immediately. The client
+// polls /api/generate/status and can stop it via /api/generate/cancel, so a slow
+// prompt is no longer bound to the lifetime of this request.
 export async function POST(request: Request) {
+  let body: unknown;
   try {
-    const body = await request.json();
-    const result = await handleGenerateRequest(body, fetch);
-    return NextResponse.json(result);
-  } catch (error) {
-    const status =
-      error instanceof GenerateRequestError || error instanceof ProviderRequestError
-        ? error.status
-        : 500;
-    const message = error instanceof Error ? error.message : "Generation failed";
-
-    return NextResponse.json({ error: { message } }, { status });
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: { message: "Invalid request body" } }, { status: 400 });
   }
+
+  const jobId = createGenerationJob(body);
+  return NextResponse.json({ jobId });
 }

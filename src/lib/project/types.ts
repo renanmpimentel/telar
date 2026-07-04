@@ -47,6 +47,12 @@ export interface ProjectVersion {
   files: ProjectFileMap;
 }
 
+/** Persisted identity of a project's live deployments, so redeploys update in place. */
+export interface DeployTargets {
+  vercel?: { name: string };
+  netlify?: { siteId: string; url?: string };
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -57,6 +63,7 @@ export interface Project {
   references: ProjectReference[];
   generationSkill: GenerationSkill;
   versions: ProjectVersion[];
+  deployTargets?: DeployTargets;
 }
 
 export interface ProjectSummary {

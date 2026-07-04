@@ -110,6 +110,7 @@ export async function handleGenerateRequest(
   rawInput: unknown,
   fetchImpl: FetchImpl = fetch,
   cliRunner?: CliRunner,
+  signal?: AbortSignal,
 ): Promise<{ change: GeneratedChange }> {
   const parsedInput = GenerateRequestSchema.safeParse(rawInput);
   if (!parsedInput.success) {
@@ -119,7 +120,7 @@ export async function handleGenerateRequest(
   validateInputFiles(parsedInput.data.files);
   validateReferences(parsedInput.data.references, parsedInput.data.files);
 
-  const change = await dispatchProvider(parsedInput.data, fetchImpl, cliRunner);
+  const change = await dispatchProvider(parsedInput.data, fetchImpl, cliRunner, signal);
 
   const parsedChange = GeneratedChangeSchema.safeParse(change);
   if (!parsedChange.success) {
@@ -142,12 +143,13 @@ async function dispatchProvider(
   input: GenerateRequest,
   fetchImpl: FetchImpl,
   cliRunner?: CliRunner,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   switch (input.provider) {
     case "openai":
-      return callOpenAI(input, fetchImpl);
+      return callOpenAI(input, fetchImpl, signal);
     case "anthropic":
-      return callAnthropic(input, fetchImpl);
+      return callAnthropic(input, fetchImpl, signal);
     case "claude-cli":
     case "codex-cli":
       return callCliAgent(
@@ -159,13 +161,19 @@ async function dispatchProvider(
           schemaHint: JSON.stringify(GENERATED_CHANGE_JSON_SCHEMA),
         },
         cliRunner,
+        signal,
       );
   }
 }
 
-async function callOpenAI(input: GenerateRequest, fetchImpl: FetchImpl): Promise<unknown> {
+async function callOpenAI(
+  input: GenerateRequest,
+  fetchImpl: FetchImpl,
+  signal?: AbortSignal,
+): Promise<unknown> {
   const response = await fetchImpl("https://api.openai.com/v1/responses", {
     method: "POST",
+    signal,
     headers: {
       Authorization: `Bearer ${input.apiKey}`,
       "Content-Type": "application/json",
@@ -195,9 +203,14 @@ async function callOpenAI(input: GenerateRequest, fetchImpl: FetchImpl): Promise
   return parseJsonText(outputText, "OpenAI");
 }
 
-async function callAnthropic(input: GenerateRequest, fetchImpl: FetchImpl): Promise<unknown> {
+async function callAnthropic(
+  input: GenerateRequest,
+  fetchImpl: FetchImpl,
+  signal?: AbortSignal,
+): Promise<unknown> {
   const response = await fetchImpl("https://api.anthropic.com/v1/messages", {
     method: "POST",
+    signal,
     headers: {
       "anthropic-version": "2023-06-01",
       "Content-Type": "application/json",

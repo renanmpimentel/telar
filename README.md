@@ -30,6 +30,10 @@ _Telar_ is Portuguese for _loom_ — you describe a screen and it weaves the cod
 
 Every screen below was generated from a single English prompt and rendered live in Telar's in-browser preview — no hand-written code.
 
+**Desktop & mobile** — flip the preview between a desktop and a phone frame to check how the generated app responds, no export or device needed.
+
+![Telar preview shown side by side on desktop and mobile](docs/screenshots/responsive.png)
+
 **Analytics dashboard**
 
 > _"A SaaS analytics dashboard with a left sidebar navigation, a top bar with search and a user avatar, four KPI summary cards, a large revenue line chart, a traffic-sources donut chart, and a recent-activity table. Clean modern light theme with a teal accent."_
@@ -62,6 +66,7 @@ Telar brings the flow of a design canvas to code generation: describe the screen
 - 🧠 **Bring your own AI** — OpenAI, Anthropic (Claude), or a local **Claude CLI** / **Codex CLI** binary (no API key needed).
 - ✍️ **Generation skills** — ships with a `frontend-design` skill or loads a custom one from a public GitHub `SKILL.md`.
 - 📦 **Export** — download the whole project as a ZIP.
+- 🚀 **Publish** — one-click deploy to **Vercel** (builds from source) or **Netlify** (built in-browser, then uploaded); paste a personal access token, no OAuth. See [Deploy providers](#deploy-providers).
 - 🌐 **Internationalization** — English and Portuguese, auto-detected and switchable.
 - 🎨 **Calm, light UI** — a "Canvas + Dock" layout that keeps the preview center stage.
 
@@ -99,9 +104,24 @@ All are optional:
 | Variable | Purpose |
 | --- | --- |
 | `NEXT_PUBLIC_PREVIEW_MODE` | Set to `mock` to render a lightweight preview without WebContainers (used in tests). |
-| `TELAR_CLI_TIMEOUT_MS` | Timeout for local CLI generation (default `300000` = 5 min). |
+| `TELAR_GENERATION_MAX_MS` | Safety cap for a background generation before it's force-aborted (default `1200000` = 20 min). |
 | `TELAR_CLAUDE_BIN` | Path/name of the Claude CLI binary (default `claude`). |
 | `TELAR_CODEX_BIN` | Path/name of the Codex CLI binary (default `codex`). |
+
+Deploy needs **no environment variables** — you paste a personal access token in the UI (see below).
+
+## Deploy providers
+
+The **Publish** drawer always offers a `.zip` download. One-click deploy is configured **entirely in the app** — no env vars, no OAuth setup, and it works locally:
+
+1. Create a personal access token on the provider ([Vercel tokens](https://vercel.com/account/tokens) / [Netlify personal access tokens](https://app.netlify.com/user/applications#personal-access-tokens)) — each card links straight to it.
+2. Open **Publish**, paste the token into the provider's card, and click **Connect**. The token is validated immediately and stored in an **httpOnly cookie** (never exposed to JavaScript).
+3. Click **Deploy** for a live URL.
+
+- **Vercel** — source files are uploaded and Vercel runs the Vite build.
+- **Netlify** — the project is built in your browser (WebContainers) and the static `dist/` is uploaded.
+
+No redirect ever leaves the app, so this works on `localhost`. All deploy messages follow the selected language.
 
 ## AI providers
 
@@ -139,6 +159,8 @@ src/
     project/      Types, templates, references, generation skills
     storage/      Local (IndexedDB) project persistence
     export/       ZIP export
+    deploy/       Client helpers + types for one-click publish
+    server/       Server-only deploy logic and GitHub skill resolver
 ```
 
 ## Contributing

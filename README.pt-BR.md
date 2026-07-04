@@ -62,6 +62,7 @@ O Telar traz o fluxo de um canvas de design para a geração de código: descrev
 - 🧠 **Traga sua IA** — OpenAI, Anthropic (Claude) ou um binário local **Claude CLI** / **Codex CLI** (sem API key).
 - ✍️ **Skills de geração** — vem com a skill `frontend-design` ou carrega uma custom de um `SKILL.md` público do GitHub.
 - 📦 **Exportar** — baixe o projeto inteiro como ZIP.
+- 🚀 **Publicar** — deploy em um clique na **Vercel** (build a partir do código) ou na **Netlify** (build no navegador e envio); cole um token de acesso pessoal, sem OAuth. Veja [Provedores de deploy](#provedores-de-deploy).
 - 🌐 **Internacionalização** — inglês e português, detectados automaticamente e alternáveis.
 - 🎨 **UI clara e calma** — um layout "Canvas + Dock" que mantém o preview no centro.
 
@@ -99,9 +100,24 @@ Todas são opcionais:
 | Variável | Para quê |
 | --- | --- |
 | `NEXT_PUBLIC_PREVIEW_MODE` | Defina como `mock` para renderizar um preview leve sem WebContainers (usado nos testes). |
-| `TELAR_CLI_TIMEOUT_MS` | Timeout da geração via CLI local (padrão `300000` = 5 min). |
+| `TELAR_GENERATION_MAX_MS` | Teto de segurança de uma geração em background antes de ser abortada (padrão `1200000` = 20 min). |
 | `TELAR_CLAUDE_BIN` | Caminho/nome do binário da Claude CLI (padrão `claude`). |
 | `TELAR_CODEX_BIN` | Caminho/nome do binário da Codex CLI (padrão `codex`). |
+
+O deploy **não precisa de variáveis de ambiente** — você cola um token de acesso pessoal na interface (veja abaixo).
+
+## Provedores de deploy
+
+O drawer **Publicar** sempre oferece o download em `.zip`. O deploy em um clique é configurado **inteiramente no app** — sem variáveis de ambiente, sem OAuth, e funciona localmente:
+
+1. Crie um token de acesso pessoal no provedor ([tokens Vercel](https://vercel.com/account/tokens) / [personal access tokens Netlify](https://app.netlify.com/user/applications#personal-access-tokens)) — cada card tem o link direto.
+2. Abra **Publicar**, cole o token no card do provedor e clique **Conectar**. O token é validado na hora e guardado em **cookie httpOnly** (nunca exposto ao JavaScript).
+3. Clique **Publicar** para obter a URL ao vivo.
+
+- **Vercel** — os arquivos-fonte são enviados e a Vercel executa o build do Vite.
+- **Netlify** — o projeto é compilado no seu navegador (WebContainers) e o `dist/` estático é enviado.
+
+Nenhum redirecionamento sai do app, então funciona no `localhost`. Todas as mensagens de deploy seguem o idioma selecionado.
 
 ## Provedores de IA
 
@@ -139,6 +155,8 @@ src/
     project/      Tipos, templates, referências, skills de geração
     storage/      Persistência local dos projetos (IndexedDB)
     export/       Exportação ZIP
+    deploy/       Helpers de cliente + tipos para publicação em um clique
+    server/       Lógica de deploy (apenas servidor) e resolvedor de skill do GitHub
 ```
 
 ## Contribuindo

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { appendReloadParam } from "@/components/preview-pane";
+import { appendReloadParam, formatElapsed } from "@/components/preview-pane";
 
 describe("appendReloadParam", () => {
   it("adiciona o parâmetro de reload com ? quando a URL não tem query", () => {
@@ -19,5 +19,14 @@ describe("appendReloadParam", () => {
     const first = appendReloadParam("https://x.webcontainer.io/", 1);
     const second = appendReloadParam("https://x.webcontainer.io/", 2);
     expect(first).not.toBe(second);
+  });
+});
+
+describe("formatElapsed", () => {
+  it("formata segundos como m:ss", () => {
+    expect(formatElapsed(0)).toBe("0:00");
+    expect(formatElapsed(9)).toBe("0:09");
+    expect(formatElapsed(75)).toBe("1:15");
+    expect(formatElapsed(600)).toBe("10:00");
   });
 });

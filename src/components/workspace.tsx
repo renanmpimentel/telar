@@ -5,7 +5,9 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Copy,
   Download,
+  ExternalLink,
   File as FileIcon,
   FileCode2,
   FileImage,
@@ -14,34 +16,58 @@ import {
   FolderOpen,
   FolderPlus,
   GitBranch,
+  Globe,
   KeyRound,
   Link2,
   Loader2,
+  LogOut,
   MessagesSquare,
   PanelLeftClose,
   Paperclip,
   RotateCcw,
+  Rocket,
   Send,
   Settings,
   Sparkles,
   Trash2,
+  Triangle,
   Upload,
   X,
 } from "lucide-react";
 import {
   ChangeEvent,
   FormEvent,
+  type ReactNode,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 
-import { PreviewPane } from "@/components/preview-pane";
+import { PreviewPane, type PreviewHandle } from "@/components/preview-pane";
 import { TelarMark } from "@/components/telar-mark";
-import { handleGenerateClientError } from "@/lib/client/errors";
+import {
+  cancelGeneration,
+  clearActiveJob,
+  fetchGenerationStatus,
+  loadActiveJob,
+  saveActiveJob,
+  startGeneration,
+  type GenerationStatus,
+} from "@/lib/client/generation";
 import { LOCALE_LABELS, LOCALES, detectLocale, useI18n } from "@/lib/i18n";
-import { downloadProjectZip } from "@/lib/export/zip";
+import { downloadProjectZip, telarProjectSlug } from "@/lib/export/zip";
+import {
+  connectWithToken,
+  deployErrorMessage,
+  deployProjectToVercel,
+  deployStaticToNetlify,
+  disconnectProvider,
+  fetchDeploySession,
+  toDeployErrorCode,
+} from "@/lib/deploy/client";
+import type { DeployProvider, DeploySession } from "@/lib/deploy/types";
+import type { Translate } from "@/lib/i18n";
 import { applyGeneratedChange } from "@/lib/project/apply-files";
 import { createDefaultProjectFiles } from "@/lib/project/template";
 import {
@@ -60,6 +86,7 @@ import {
 } from "@/lib/project/references";
 import type {
   ChatMessage,
+  DeployTargets,
   GeneratedChange,
   Project,
   ProjectReference,
@@ -87,8 +114,18 @@ const DEFAULT_MODELS: Record<ProviderId, string> = {
   "codex-cli": "",
 };
 
-type ActiveDrawer = "settings" | "files" | "projects" | null;
+type ActiveDrawer = "settings" | "files" | "projects" | "publish" | null;
 type SkillNotice = { tone: "success" | "error"; message: string };
+
+type DeployPhase = "idle" | "building" | "deploying" | "done" | "error";
+type DeployStatus = { phase: DeployPhase; message?: string; url?: string };
+const IDLE_DEPLOY: DeployStatus = { phase: "idle" };
+
+const GENERATION_POLL_MS = 2000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const PROMPT_EXAMPLE_KEYS = ["examples.0", "examples.1", "examples.2"] as const;
 
@@ -114,7 +151,19 @@ export function Workspace() {
   const apiKeyInputRef = useRef<HTMLInputElement>(null);
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const projectMenuRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<PreviewHandle>(null);
+  const projectRef = useRef<Project | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [activeJob, setActiveJob] = useState<{ id: string; prompt: string } | null>(null);
+  const [genElapsed, setGenElapsed] = useState(0);
+
+  const [deploySession, setDeploySession] = useState<DeploySession>({
+    vercel: false,
+    netlify: false,
+  });
+  const [vercelDeploy, setVercelDeploy] = useState<DeployStatus>(IDLE_DEPLOY);
+  const [netlifyDeploy, setNetlifyDeploy] = useState<DeployStatus>(IDLE_DEPLOY);
+  const [publishNotice, setPublishNotice] = useState<SkillNotice | null>(null);
 
   const [cliAgents, setCliAgents] = useState<{ claude: boolean; codex: boolean }>({
     claude: false,
@@ -151,9 +200,18 @@ export function Workspace() {
 
       if (cancelled) return;
       setProject(activeProject);
+      projectRef.current = activeProject;
       setSelectedPath(getPreferredSelectedPath(activeProject, "src/App.tsx"));
       saveActiveProjectId(activeProject.id);
       setSummaries(await listProjectSummaries());
+
+      // Re-attach to a generation that was still running before a reload.
+      const pending = loadActiveJob(activeProject.id);
+      if (pending) {
+        setGenElapsed(0);
+        setIsGenerating(true);
+        setActiveJob({ id: pending.jobId, prompt: pending.prompt });
+      }
     }
 
     void bootWorkspace();
@@ -162,6 +220,69 @@ export function Workspace() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    projectRef.current = project;
+  }, [project]);
+
+  // Elapsed-time ticker shown while a generation runs.
+  useEffect(() => {
+    if (!isGenerating) return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setGenElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isGenerating]);
+
+  // Poll the active background generation job until it settles.
+  useEffect(() => {
+    if (!activeJob) return;
+    const { id: jobId, prompt } = activeJob;
+    let stopped = false;
+
+    async function run() {
+      while (!stopped) {
+        let status: GenerationStatus;
+        try {
+          status = await fetchGenerationStatus(jobId);
+        } catch {
+          await sleep(GENERATION_POLL_MS); // transient network error — retry
+          continue;
+        }
+        if (stopped) return;
+
+        if (status.status === "running") {
+          await sleep(GENERATION_POLL_MS);
+          continue;
+        }
+
+        if (status.status === "done" && status.change) {
+          await applyGenerationChange(status.change, prompt);
+        } else if (status.status === "error") {
+          await finishGenerationError(status.error?.message ?? "Generation failed");
+        } else if (status.status === "cancelled") {
+          setNotice(t("notice.genCancelled"));
+        } else if (status.status === "unknown") {
+          setNotice(t("notice.genLost"));
+        }
+
+        const projectId = projectRef.current?.id;
+        if (projectId) clearActiveJob(projectId);
+        setActiveJob(null);
+        setIsGenerating(false);
+        return;
+      }
+    }
+
+    void run();
+    return () => {
+      stopped = true;
+    };
+    // applyGenerationChange/finishGenerationError/t are stable enough here; we
+    // intentionally key only on the active job to avoid restarting the poll loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeJob]);
 
   useEffect(() => {
     if (activeDrawer !== "settings") return;
@@ -281,6 +402,10 @@ export function Workspace() {
   const generatingMessage = isCliProvider
     ? t("generating.cli", { name: provider === "claude-cli" ? "Claude" : "Codex" })
     : t("generating.screen");
+
+  useEffect(() => {
+    void fetchDeploySession().then(setDeploySession);
+  }, []);
 
   async function refreshSummaries() {
     setSummaries(await listProjectSummaries());
@@ -407,80 +532,101 @@ export function Workspace() {
     setSettingsNotice(null);
     setReferenceNotice(null);
     setDraft("");
+    setGenElapsed(0);
     setIsGenerating(true);
 
+    const body = {
+      provider,
+      apiKey,
+      model,
+      prompt,
+      messages: project.messages.slice(-8),
+      files: project.files,
+      references: project.references,
+      generationSkill: project.generationSkill,
+    };
+
+    // Persist the user's message up front so a reload mid-generation keeps it.
     const userMessage = createMessage("user", prompt);
-    setProject({ ...project, messages: [...project.messages, userMessage] });
+    const baseProject: Project = {
+      ...project,
+      messages: [...project.messages, userMessage],
+      updatedAt: new Date().toISOString(),
+    };
 
     try {
-      const response = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          provider,
-          apiKey,
-          model,
-          prompt,
-          messages: project.messages.slice(-8),
-          files: project.files,
-          references: project.references,
-          generationSkill: project.generationSkill,
-        }),
-      });
-
-      const payload = (await response.json()) as
-        | { change: GeneratedChange }
-        | { error?: { message?: string } };
-
-      if (!response.ok || !("change" in payload)) {
-        throw new Error(handleGenerateClientError(payload));
-      }
-
-      const applied = applyGeneratedChange(project.files, payload.change);
-      if (!applied.ok) {
-        throw new Error(applied.error);
-      }
-
-      const version: ProjectVersion = {
-        id: createLocalId("ver"),
-        prompt,
-        summary: payload.change.summary,
-        createdAt: new Date().toISOString(),
-        files: applied.files,
-      };
-      // The assistant reply is just a compact, restorable version marker (#1, #2…)
-      // instead of a verbose summary of what changed.
-      const assistantMessage = createMessage(
-        "assistant",
-        `#${project.versions.length + 1}`,
-        false,
-        version.id,
-      );
-      const nextProject: Project = {
-        ...project,
-        files: applied.files,
-        messages: [...project.messages, userMessage, assistantMessage],
-        versions: [...project.versions, version],
-        updatedAt: new Date().toISOString(),
-      };
-
-      await persist(nextProject);
-      if (applied.changedPaths[0]) {
-        setSelectedPath(applied.changedPaths[0]);
-      }
+      await persist(baseProject);
+      const jobId = await startGeneration(body);
+      saveActiveJob(baseProject.id, jobId, prompt);
+      setActiveJob({ id: jobId, prompt }); // hands off to the polling effect
     } catch (error) {
       const message = error instanceof Error ? error.message : "Generation failed";
-      const friendlyMessage = t("notice.updateFailed", { message });
-      const assistantMessage = createMessage("assistant", friendlyMessage, true);
-      await persist({
-        ...project,
-        messages: [...project.messages, userMessage, assistantMessage],
-        updatedAt: new Date().toISOString(),
-      });
-      setNotice(friendlyMessage);
-    } finally {
+      await finishGenerationError(message);
       setIsGenerating(false);
     }
+  }
+
+  // Applies a finished generation onto the latest project state (which already
+  // holds the user's message), appending a restorable version marker.
+  async function applyGenerationChange(change: GeneratedChange, prompt: string) {
+    const current = projectRef.current;
+    if (!current) return;
+
+    const applied = applyGeneratedChange(current.files, change);
+    if (!applied.ok) {
+      await finishGenerationError(applied.error);
+      return;
+    }
+
+    const version: ProjectVersion = {
+      id: createLocalId("ver"),
+      prompt,
+      summary: change.summary,
+      createdAt: new Date().toISOString(),
+      files: applied.files,
+    };
+    const assistantMessage = createMessage(
+      "assistant",
+      `#${current.versions.length + 1}`,
+      false,
+      version.id,
+    );
+    const nextProject: Project = {
+      ...current,
+      files: applied.files,
+      messages: [...current.messages, assistantMessage],
+      versions: [...current.versions, version],
+      updatedAt: new Date().toISOString(),
+    };
+
+    await persist(nextProject);
+    if (applied.changedPaths[0]) {
+      setSelectedPath(applied.changedPaths[0]);
+    }
+  }
+
+  async function finishGenerationError(message: string) {
+    const current = projectRef.current;
+    const friendlyMessage = t("notice.updateFailed", { message });
+    if (current) {
+      const assistantMessage = createMessage("assistant", friendlyMessage, true);
+      await persist({
+        ...current,
+        messages: [...current.messages, assistantMessage],
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    setNotice(friendlyMessage);
+  }
+
+  async function handleCancelGeneration() {
+    if (!activeJob) return;
+    await cancelGeneration(activeJob.id);
+    const projectId = projectRef.current?.id;
+    if (projectId) clearActiveJob(projectId);
+    setActiveJob(null);
+    setIsGenerating(false);
+    setNotice(t("notice.genCancelled"));
   }
 
   function handleFileChange(content: string) {
@@ -497,6 +643,81 @@ export function Workspace() {
   async function handleExport() {
     if (!project) return;
     await downloadProjectZip(project.files, project.name, project.references);
+  }
+
+  async function handleConnectToken(provider: DeployProvider, token: string): Promise<boolean> {
+    setPublishNotice(null);
+    try {
+      await connectWithToken(provider, token);
+      setDeploySession((current) => ({ ...current, [provider]: true }));
+      setPublishNotice({ tone: "success", message: t("publish.connected", { provider }) });
+      return true;
+    } catch (error) {
+      setPublishNotice({ tone: "error", message: deployErrorMessage(t, toDeployErrorCode(error)) });
+      return false;
+    }
+  }
+
+  async function handleDisconnect(provider: DeployProvider) {
+    await disconnectProvider(provider);
+    setDeploySession((current) => ({ ...current, [provider]: false }));
+    if (provider === "vercel") setVercelDeploy(IDLE_DEPLOY);
+    else setNetlifyDeploy(IDLE_DEPLOY);
+  }
+
+  // Merges deploy identity into the latest project so a redeploy updates in place.
+  async function persistDeployTarget(patch: DeployTargets) {
+    const current = projectRef.current;
+    if (!current) return;
+    await persist({
+      ...current,
+      deployTargets: { ...current.deployTargets, ...patch },
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  async function handleDeployVercel() {
+    if (!project || vercelDeploy.phase === "deploying") return;
+    setPublishNotice(null);
+    setVercelDeploy({ phase: "deploying", message: t("publish.deploying") });
+    try {
+      // Reuse the persisted project name so Vercel updates the same project.
+      const name = project.deployTargets?.vercel?.name ?? telarProjectSlug(project.name);
+      const result = await deployProjectToVercel(project, name);
+      await persistDeployTarget({ vercel: { name } });
+      setVercelDeploy({ phase: "done", url: result.url });
+    } catch (error) {
+      setVercelDeploy({ phase: "error", message: deployErrorMessage(t, toDeployErrorCode(error)) });
+    }
+  }
+
+  async function handleDeployNetlify() {
+    if (!project || netlifyDeploy.phase === "building" || netlifyDeploy.phase === "deploying") return;
+    if (!previewRef.current) {
+      setNetlifyDeploy({ phase: "error", message: t("publish.buildUnavailable") });
+      return;
+    }
+    setPublishNotice(null);
+    setNetlifyDeploy({ phase: "building", message: t("publish.building") });
+    try {
+      const dist = await previewRef.current.buildStaticSite(project.files, project.references);
+      setNetlifyDeploy({ phase: "deploying", message: t("publish.deploying") });
+      // Reuse the persisted site so Netlify updates it instead of creating a new one;
+      // on first deploy, name the site after the project slug.
+      const siteId = projectRef.current?.deployTargets?.netlify?.siteId;
+      const name = telarProjectSlug(project.name);
+      const result = await deployStaticToNetlify(dist, { siteId, name });
+      if (result.siteId) {
+        await persistDeployTarget({ netlify: { siteId: result.siteId, url: result.url } });
+      }
+      setNetlifyDeploy({ phase: "done", url: result.url });
+    } catch (error) {
+      // A WebContainer build failure isn't a DeployClientError — show a build message.
+      const code = toDeployErrorCode(error);
+      const message =
+        code === "network" ? t("publish.err.buildFailed") : deployErrorMessage(t, code);
+      setNetlifyDeploy({ phase: "error", message });
+    }
   }
 
   async function handleReferenceInput(event: ChangeEvent<HTMLInputElement>) {
@@ -701,6 +922,10 @@ export function Workspace() {
             <FolderOpen size={16} aria-hidden="true" />
             <span>{t("topbar.files")}</span>
           </button>
+          <button className="quiet-command" type="button" onClick={() => openDrawer("publish")}>
+            <Rocket size={16} aria-hidden="true" />
+            <span>{t("topbar.publish")}</span>
+          </button>
           <button className="quiet-command" type="button" onClick={() => openDrawer("settings")}>
             <Settings size={16} aria-hidden="true" />
             <span>{t("topbar.settings")}</span>
@@ -791,7 +1016,12 @@ export function Workspace() {
         </aside>
 
         <div className="canvas">
-          <PreviewPane files={project.files} references={project.references} isGenerating={isGenerating} />
+          <PreviewPane
+            ref={previewRef}
+            files={project.files}
+            references={project.references}
+            isGenerating={isGenerating}
+          />
 
           <form className="command-dock" onSubmit={handleGenerate}>
             <label className="sr-only" htmlFor="prompt">
@@ -816,14 +1046,24 @@ export function Workspace() {
               rows={1}
               disabled={isGenerating}
             />
-            <button className="primary-command dock-generate" type="submit" disabled={isGenerating}>
-              {isGenerating ? (
+            {isGenerating ? (
+              <button
+                className="primary-command dock-generate dock-cancel"
+                type="button"
+                onClick={() => void handleCancelGeneration()}
+                aria-label={t("dock.cancel")}
+                title={t("dock.cancel")}
+              >
                 <Loader2 className="spin" size={17} aria-hidden="true" />
-              ) : (
+                <span>{t("dock.generating")} {genElapsed}s</span>
+                <X size={15} aria-hidden="true" />
+              </button>
+            ) : (
+              <button className="primary-command dock-generate" type="submit">
                 <Send size={17} aria-hidden="true" />
-              )}
-              <span>{isGenerating ? t("dock.generating") : t("dock.generate")}</span>
-            </button>
+                <span>{t("dock.generate")}</span>
+              </button>
+            )}
           </form>
         </div>
       </div>
@@ -1133,7 +1373,7 @@ export function Workspace() {
                 })}
               </div>
             </section>
-          ) : (
+          ) : activeDrawer === "files" ? (
             <section className="side-drawer files-drawer" aria-label={t("files.title")}>
               <div className="drawer-header">
                 <div>
@@ -1254,10 +1494,226 @@ export function Workspace() {
                 )}
               </div>
             </section>
+          ) : (
+            <section className="side-drawer publish-drawer" aria-label={t("publish.title")}>
+              <div className="drawer-header">
+                <div>
+                  <p>{t("publish.eyebrow")}</p>
+                  <h2>{t("publish.title")}</h2>
+                </div>
+                <button
+                  className="icon-only"
+                  type="button"
+                  aria-label={t("publish.close")}
+                  onClick={closeDrawer}
+                >
+                  <X size={17} aria-hidden="true" />
+                </button>
+              </div>
+
+              {publishNotice ? (
+                <p
+                  className={`drawer-notice ${publishNotice.tone}`}
+                  role={publishNotice.tone === "error" ? "alert" : "status"}
+                >
+                  {publishNotice.message}
+                </p>
+              ) : null}
+
+              <div className="settings-card publish-card">
+                <div className="publish-card-header">
+                  <Download size={18} aria-hidden="true" />
+                  <div>
+                    <h3>{t("publish.zipTitle")}</h3>
+                    <small>{t("publish.zipHint")}</small>
+                  </div>
+                </div>
+                <button className="secondary-command" type="button" onClick={() => void handleExport()}>
+                  <Download size={16} aria-hidden="true" />
+                  <span>{t("publish.exportZip")}</span>
+                </button>
+              </div>
+
+              <ProviderDeployCard
+                t={t}
+                icon={<Triangle size={18} aria-hidden="true" />}
+                name="Vercel"
+                provider="vercel"
+                hint={t("publish.vercelHint")}
+                tokenHint={t("publish.tokenHintVercel")}
+                deployLabel={t("publish.deployVercel")}
+                tokenUrl="https://vercel.com/account/tokens"
+                connected={deploySession.vercel}
+                status={vercelDeploy}
+                onConnect={(token) => handleConnectToken("vercel", token)}
+                onDisconnect={() => void handleDisconnect("vercel")}
+                onDeploy={() => void handleDeployVercel()}
+              />
+
+              <ProviderDeployCard
+                t={t}
+                icon={<Globe size={18} aria-hidden="true" />}
+                name="Netlify"
+                provider="netlify"
+                hint={t("publish.netlifyHint")}
+                tokenHint={t("publish.tokenHintNetlify")}
+                deployLabel={t("publish.deployNetlify")}
+                tokenUrl="https://app.netlify.com/user/applications#personal-access-tokens"
+                connected={deploySession.netlify}
+                status={netlifyDeploy}
+                onConnect={(token) => handleConnectToken("netlify", token)}
+                onDisconnect={() => void handleDisconnect("netlify")}
+                onDeploy={() => void handleDeployNetlify()}
+              />
+            </section>
           )}
         </>
       ) : null}
     </main>
+  );
+}
+
+function ProviderDeployCard({
+  t,
+  icon,
+  name,
+  provider,
+  hint,
+  tokenHint,
+  deployLabel,
+  tokenUrl,
+  connected,
+  status,
+  onConnect,
+  onDisconnect,
+  onDeploy,
+}: {
+  t: Translate;
+  icon: ReactNode;
+  name: string;
+  provider: DeployProvider;
+  hint: string;
+  tokenHint: string;
+  deployLabel: string;
+  tokenUrl: string;
+  connected: boolean;
+  status: DeployStatus;
+  onConnect: (token: string) => Promise<boolean>;
+  onDisconnect: () => void;
+  onDeploy: () => void;
+}) {
+  const [token, setToken] = useState("");
+  const [connecting, setConnecting] = useState(false);
+  const busy = status.phase === "building" || status.phase === "deploying";
+  const canConnect = token.trim().length > 0 && !connecting;
+
+  async function connect() {
+    if (!canConnect) return;
+    setConnecting(true);
+    const ok = await onConnect(token.trim());
+    setConnecting(false);
+    if (ok) setToken("");
+  }
+
+  return (
+    <div className="settings-card publish-card">
+      <div className="publish-card-header">
+        {icon}
+        <div>
+          <h3>{name}</h3>
+          <small>{hint}</small>
+        </div>
+        {connected ? <span className="publish-badge" aria-hidden="true" /> : null}
+      </div>
+
+      {!connected ? (
+        <div className="publish-config">
+          <label className="field-label" htmlFor={`${provider}-token`}>
+            {t("publish.tokenLabel")}
+          </label>
+          <div className="key-input">
+            <KeyRound size={16} aria-hidden="true" />
+            <input
+              id={`${provider}-token`}
+              type="password"
+              value={token}
+              onChange={(event) => setToken(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void connect();
+              }}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </div>
+
+          <button
+            className="secondary-command"
+            type="button"
+            disabled={!canConnect}
+            onClick={() => void connect()}
+          >
+            {connecting ? (
+              <Loader2 className="spin" size={16} aria-hidden="true" />
+            ) : (
+              <KeyRound size={16} aria-hidden="true" />
+            )}
+            <span>{t("publish.connect")}</span>
+          </button>
+
+          <a className="publish-link" href={tokenUrl} target="_blank" rel="noreferrer">
+            <ExternalLink size={13} aria-hidden="true" />
+            <span>{t("publish.createToken")}</span>
+          </a>
+          <small className="publish-token-hint">{tokenHint}</small>
+        </div>
+      ) : (
+        <>
+          <button className="secondary-command" type="button" onClick={onDeploy} disabled={busy}>
+            {busy ? (
+              <Loader2 className="spin" size={16} aria-hidden="true" />
+            ) : (
+              <Rocket size={16} aria-hidden="true" />
+            )}
+            <span>{busy ? status.message : deployLabel}</span>
+          </button>
+          <button
+            className="quiet-command publish-disconnect"
+            type="button"
+            onClick={onDisconnect}
+            disabled={busy}
+          >
+            <LogOut size={14} aria-hidden="true" />
+            <span>{t("publish.disconnect")}</span>
+          </button>
+        </>
+      )}
+
+      {status.phase === "done" && status.url ? (
+        <div className="publish-result">
+          <a className="secondary-command" href={status.url} target="_blank" rel="noreferrer">
+            <ExternalLink size={16} aria-hidden="true" />
+            <span>{t("publish.openSite")}</span>
+          </a>
+          <button
+            className="quiet-command"
+            type="button"
+            onClick={() => {
+              if (status.url) void navigator.clipboard?.writeText(status.url);
+            }}
+          >
+            <Copy size={14} aria-hidden="true" />
+            <span>{t("publish.copyUrl")}</span>
+          </button>
+          <span className="publish-url">{status.url}</span>
+        </div>
+      ) : null}
+
+      {status.phase === "error" && status.message ? (
+        <p className="drawer-notice error" role="alert">
+          {status.message}
+        </p>
+      ) : null}
+    </div>
   );
 }
 

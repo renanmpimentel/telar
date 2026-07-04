@@ -22,11 +22,23 @@ interface RunningProcess {
   output: ReadableStream<string>;
 }
 
+interface WebContainerDirEnt {
+  name: string;
+  isDirectory: () => boolean;
+  isFile: () => boolean;
+}
+
+interface WebContainerFs {
+  readdir: (path: string, options: { withFileTypes: true }) => Promise<WebContainerDirEnt[]>;
+  readFile: (path: string) => Promise<Uint8Array>;
+}
+
 interface WebContainerInstance {
   mount: (tree: WebContainerTree | Uint8Array, options?: { mountPoint?: string }) => Promise<void>;
   spawn: (command: string, args: string[]) => Promise<RunningProcess>;
   export: (path: string, options: { format: "binary" }) => Promise<Uint8Array>;
   on: (event: "server-ready", callback: (port: number, url: string) => void) => void;
+  fs: WebContainerFs;
 }
 
 interface RuntimeEvents {
@@ -106,6 +118,44 @@ export class WebContainerRuntime {
     } else {
       this.events.onStatus("Preview updated");
     }
+  }
+
+  /**
+   * Builds the project to static files and returns the produced `dist/` as a
+   * path -> bytes map, ready to be zipped and deployed to a static host.
+   *
+   * Runs `vite build` directly instead of the template's `npm run build`
+   * (`tsc --noEmit && vite build`): the goal of publishing is to produce the
+   * bundle, and a stray TypeScript error in AI-generated code shouldn't block a
+   * deploy when the app already renders in the (type-check-free) Vite preview.
+   */
+  async buildStaticSite(
+    files: ProjectFileMap,
+    references: ProjectReference[] = [],
+  ): Promise<Record<string, Uint8Array>> {
+    if (!globalThis.crossOriginIsolated) {
+      throw new Error("Building requires cross-origin isolation. Use Chrome/Chromium.");
+    }
+
+    const container = await this.boot();
+    this.events.onStatus("Preparing build");
+    await container.mount(toWebContainerTree(files, references));
+    await this.install(container);
+
+    this.events.onStatus("Building static site");
+    const build = await container.spawn("npx", ["vite", "build"]);
+    this.pipeProcessOutput(build);
+    const exitCode = await build.exit;
+    if (exitCode !== 0) {
+      throw new Error(`Build failed with exit code ${exitCode}`);
+    }
+
+    this.events.onStatus("Collecting build output");
+    const dist = await collectDirectory(container, "dist");
+    if (Object.keys(dist).length === 0) {
+      throw new Error("The build produced no files in dist/.");
+    }
+    return dist;
   }
 
   /** Returns true when dependencies were remounted from the cache, false after a fresh install. */
@@ -249,6 +299,29 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
       },
     );
   });
+}
+
+async function collectDirectory(
+  container: WebContainerInstance,
+  root: string,
+): Promise<Record<string, Uint8Array>> {
+  const out: Record<string, Uint8Array> = {};
+
+  async function walk(dir: string, prefix: string): Promise<void> {
+    const entries = await container.fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = `${dir}/${entry.name}`;
+      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        await walk(fullPath, relativePath);
+      } else {
+        out[relativePath] = await container.fs.readFile(fullPath);
+      }
+    }
+  }
+
+  await walk(root, "");
+  return out;
 }
 
 export function dependencySignature(packageJson: string): string {

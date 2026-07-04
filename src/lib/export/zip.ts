@@ -34,18 +34,43 @@ export async function downloadProjectZip(
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `${slugify(projectName || "telar-project")}.zip`;
+  anchor.download = `${telarProjectSlug(projectName)}.zip`;
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
 }
 
-function slugify(value: string): string {
+/** Zips an already-built file map (e.g. a Vite `dist/`) into a deployable archive. */
+export async function zipStaticFiles(files: Record<string, Uint8Array>): Promise<Uint8Array> {
+  const zip = new JSZip();
+  for (const [filePath, data] of Object.entries(files).sort(([a], [b]) => a.localeCompare(b))) {
+    zip.file(filePath, data);
+  }
+  return zip.generateAsync({ type: "uint8array" });
+}
+
+/**
+ * Deploy/download identifier for a project. Always `telar-` prefixed and derived
+ * from the project name; falls back to `telar-app-XXXX` when the project has no
+ * real name yet (empty or still the default "Untitled Project").
+ */
+export function telarProjectSlug(name: string): string {
+  const base = slugifyBase(name);
+  const core = base && base !== "untitled-project" ? base : `app-${randomSuffix()}`;
+  // Avoid telar-telar-... when the name already leads with "telar".
+  return core.startsWith("telar") ? core : `telar-${core}`;
+}
+
+function slugifyBase(value: string): string {
   return value
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "")
-    .slice(0, 80) || "telar-project";
+    .slice(0, 72);
+}
+
+function randomSuffix(): string {
+  return Math.random().toString(36).slice(2, 6);
 }

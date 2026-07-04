@@ -1,7 +1,7 @@
 "use client";
 
-import { AlertTriangle, ExternalLink, Info, Loader2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, ExternalLink, Info, Loader2, Monitor, Smartphone } from "lucide-react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 
 import { openPreviewWindow } from "@/lib/client/preview-window";
 import { useI18n } from "@/lib/i18n";
@@ -15,13 +15,27 @@ interface PreviewPaneProps {
   isGenerating?: boolean;
 }
 
+export interface PreviewHandle {
+  /**
+   * Builds the current project to static files (Vite `dist/`) inside the shared
+   * WebContainer and returns them as a path -> bytes map. Rejects in mock mode.
+   */
+  buildStaticSite: (
+    files: ProjectFileMap,
+    references: ProjectReference[],
+  ) => Promise<Record<string, Uint8Array>>;
+}
+
 type PreviewState =
   | { mode: "idle"; status: string; url?: undefined; srcDoc?: undefined; error?: undefined }
   | { mode: "mock"; status: string; srcDoc: string; url?: undefined; error?: undefined }
   | { mode: "webcontainer"; status: string; url?: string; srcDoc?: undefined; error?: undefined }
   | { mode: "error"; status: string; error: string; url?: undefined; srcDoc?: undefined };
 
-export function PreviewPane({ files, references = [], isGenerating = false }: PreviewPaneProps) {
+export const PreviewPane = forwardRef<PreviewHandle, PreviewPaneProps>(function PreviewPane(
+  { files, references = [], isGenerating = false },
+  ref,
+) {
   const { t } = useI18n();
   // Keep the latest translator in a ref so the runtime effect need not depend on it
   // (re-running would tear down and rebuild the WebContainer on a language switch).
@@ -33,6 +47,8 @@ export function PreviewPane({ files, references = [], isGenerating = false }: Pr
   const [logs, setLogs] = useState<string[]>([]);
   const [state, setState] = useState<PreviewState>({ mode: "idle", status: t("preview.waiting") });
   const [reloadNonce, setReloadNonce] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  const [viewport, setViewport] = useState<"desktop" | "mobile">("desktop");
   const [mockMode] = useState(() => readMockMode());
   const fileSignature = useMemo(() => stableProjectSignature(files, references), [files, references]);
   const displayState: PreviewState = mockMode
@@ -48,6 +64,19 @@ export function PreviewPane({ files, references = [], isGenerating = false }: Pr
         : displayState.mode === "idle"
           ? "idle"
           : "busy";
+  const isBusy = statusTone === "busy";
+
+  // Elapsed-time counter while the WebContainer is booting/installing/starting,
+  // so a slow first `npm install` doesn't look frozen.
+  useEffect(() => {
+    if (!isBusy) return;
+    setElapsed(0);
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isBusy]);
 
   function handleOpenPreview() {
     if (displayState.mode === "webcontainer" && displayState.url) {
@@ -60,15 +89,7 @@ export function PreviewPane({ files, references = [], isGenerating = false }: Pr
     }
   }
 
-  useEffect(() => {
-    return () => runtimeRef.current?.dispose();
-  }, []);
-
-  useEffect(() => {
-    if (mockMode) {
-      return;
-    }
-
+  function ensureRuntime(): WebContainerRuntime {
     if (!runtimeRef.current) {
       runtimeRef.current = new WebContainerRuntime(
         {
@@ -94,9 +115,35 @@ export function PreviewPane({ files, references = [], isGenerating = false }: Pr
         { moduleCache: createModuleCache() },
       );
     }
+    return runtimeRef.current;
+  }
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      buildStaticSite: (buildFiles, buildReferences) => {
+        if (mockMode) {
+          return Promise.reject(new Error("Building is unavailable in mock preview mode."));
+        }
+        return ensureRuntime().buildStaticSite(buildFiles, buildReferences);
+      },
+    }),
+    [mockMode],
+  );
+
+  useEffect(() => {
+    return () => runtimeRef.current?.dispose();
+  }, []);
+
+  useEffect(() => {
+    if (mockMode) {
+      return;
+    }
+
+    const runtime = ensureRuntime();
 
     let cancelled = false;
-    runtimeRef.current
+    runtime
       .sync(files, references)
       .then(() => {
         // The dev server is running and files are mounted, but a bare mount()
@@ -129,6 +176,28 @@ export function PreviewPane({ files, references = [], isGenerating = false }: Pr
             <span className="status-dot" aria-hidden="true" />
             <span className="status-label">{displayState.status}</span>
           </span>
+          <div className="segmented viewport-toggle" role="group" aria-label={t("preview.viewport")}>
+            <button
+              type="button"
+              className={viewport === "desktop" ? "is-selected" : ""}
+              aria-pressed={viewport === "desktop"}
+              title={t("preview.desktop")}
+              onClick={() => setViewport("desktop")}
+            >
+              <Monitor size={15} aria-hidden="true" />
+              <span className="sr-only">{t("preview.desktop")}</span>
+            </button>
+            <button
+              type="button"
+              className={viewport === "mobile" ? "is-selected" : ""}
+              aria-pressed={viewport === "mobile"}
+              title={t("preview.mobile")}
+              onClick={() => setViewport("mobile")}
+            >
+              <Smartphone size={15} aria-hidden="true" />
+              <span className="sr-only">{t("preview.mobile")}</span>
+            </button>
+          </div>
           <button
             className="preview-open-button"
             type="button"
@@ -142,7 +211,7 @@ export function PreviewPane({ files, references = [], isGenerating = false }: Pr
         </div>
       </div>
 
-      <div className="preview-stage">
+      <div className="preview-stage" data-viewport={viewport}>
         {displayState.mode === "error" ? (
           <div className="preview-message" role="alert">
             <AlertTriangle size={24} aria-hidden="true" />
@@ -163,7 +232,15 @@ export function PreviewPane({ files, references = [], isGenerating = false }: Pr
         ) : (
           <div className="preview-message">
             <Loader2 className="spin" size={24} aria-hidden="true" />
-            <p>{displayState.status}</p>
+            <div className="preview-message-body">
+              <p>
+                {displayState.status}
+                {isBusy ? <span className="preview-elapsed"> · {formatElapsed(elapsed)}</span> : null}
+              </p>
+              {isBusy && elapsed >= 5 ? (
+                <small className="preview-hint">{t("preview.installHint")}</small>
+              ) : null}
+            </div>
           </div>
         )}
 
@@ -197,11 +274,17 @@ export function PreviewPane({ files, references = [], isGenerating = false }: Pr
       </details>
     </section>
   );
-}
+});
 
 export function appendReloadParam(url: string, nonce: number): string {
   const separator = url.includes("?") ? "&" : "?";
   return `${url}${separator}__preview=${nonce}`;
+}
+
+export function formatElapsed(totalSeconds: number): string {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 function readMockMode(): boolean {

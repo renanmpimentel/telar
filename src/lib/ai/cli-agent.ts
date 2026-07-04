@@ -12,7 +12,7 @@ export type CliRunResult = { stdout: string; stderr: string };
 export type CliRunner = (
   bin: string,
   args: string[],
-  options: { input: string; cwd: string; timeoutMs: number },
+  options: { input: string; cwd: string; signal?: AbortSignal },
 ) => Promise<CliRunResult>;
 
 export interface CliAgentInput {
@@ -23,18 +23,9 @@ export interface CliAgentInput {
   schemaHint: string;
 }
 
-// The local CLI initializes on every request and runs on its own default
-// model (often a large, slow one), so real generations — a big prompt plus a
-// full multi-file JSON output — regularly need more than a couple of minutes.
-// Default to 5 min; allow overriding via TELAR_CLI_TIMEOUT_MS (in ms).
-const DEFAULT_TIMEOUT_MS = 300_000;
-
-function resolveTimeoutMs(): number {
-  const raw = Number(process.env.TELAR_CLI_TIMEOUT_MS);
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_TIMEOUT_MS;
-}
-
-const TIMEOUT_MS = resolveTimeoutMs();
+// The generation runs as a background job that owns the time budget (a generous
+// safety cap in generation-jobs.ts) and can be aborted via an AbortSignal, so
+// the CLI no longer enforces its own short timeout here.
 const MAX_BUFFER = 20 * 1024 * 1024;
 
 const INSTRUCTION =
@@ -66,7 +57,11 @@ function argsFor(provider: CliAgentInput["provider"], model?: string): string[] 
   return args;
 }
 
-export async function callCliAgent(input: CliAgentInput, runner: CliRunner = defaultCliRunner): Promise<unknown> {
+export async function callCliAgent(
+  input: CliAgentInput,
+  runner: CliRunner = defaultCliRunner,
+  signal?: AbortSignal,
+): Promise<unknown> {
   const bin = binFor(input.provider);
   const args = argsFor(input.provider, input.model);
   const prompt = buildCliPrompt(input);
@@ -74,7 +69,7 @@ export async function callCliAgent(input: CliAgentInput, runner: CliRunner = def
   const dir = await mkdtemp(join(tmpdir(), "telar-cli-"));
   let result: CliRunResult;
   try {
-    result = await runner(bin, args, { input: prompt, cwd: dir, timeoutMs: TIMEOUT_MS });
+    result = await runner(bin, args, { input: prompt, cwd: dir, signal });
   } catch (error) {
     throw mapRunnerError(error, bin);
   } finally {
@@ -187,12 +182,12 @@ function extractJsonObject(text: string): string {
   return fenced.slice(start, end + 1);
 }
 
-const defaultCliRunner: CliRunner = (bin, args, { input, cwd, timeoutMs }) =>
+const defaultCliRunner: CliRunner = (bin, args, { input, cwd, signal }) =>
   new Promise<CliRunResult>((resolve, reject) => {
     const child = execFile(
       bin,
       args,
-      { cwd, timeout: timeoutMs, maxBuffer: MAX_BUFFER },
+      { cwd, maxBuffer: MAX_BUFFER, signal },
       (error, stdout, stderr) => {
         if (error) {
           (error as { stderr?: string }).stderr = stderr;

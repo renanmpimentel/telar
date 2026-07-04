@@ -742,3 +742,7 @@ img { max-width: 100%; display: block; }
   .car-arrow { width: 38px; height: 38px; font-size: 1.3rem; }
   .carousel-stage { gap: 6px; }
 }
+
+/* Responsive (desktop + mobile) showcase image */
+.responsive-shot { margin: 32px auto 0; max-width: 1000px; }
+.responsive-shot img { display: block; width: 100%; height: auto; border-radius: 16px; }
