@@ -60,6 +60,7 @@ Telar brings the flow of a design canvas to code generation: describe the screen
 
 - 🧵 **Prompt to UI** — describe a screen and get a complete, editable React project.
 - 👀 **Live preview** — the generated app runs in-browser via [WebContainers](https://webcontainers.io), with a lightweight mock mode for tests.
+- ⚡ **Warm-start preview** — a prebuilt `node_modules` seed skips most of the first `npm install`, so previews open fast instead of installing from scratch. See [Preview dependency seed](#preview-dependency-seed).
 - 🗂️ **Projects** — create, switch, rename and delete projects; each keeps its own conversation and version history.
 - ⏪ **Versions** — every generation is a restorable snapshot.
 - 📎 **References** — attach text and image files to guide generation.
@@ -110,6 +111,22 @@ All are optional:
 
 Deploy needs **no environment variables** — you paste a personal access token in the UI (see below).
 
+## Preview dependency seed
+
+The live preview installs the generated project's dependencies inside a WebContainer. The **first** open used to run a full `npm install`, blocking the preview for tens of seconds. Telar now warm-starts that step:
+
+- On a fresh browser, the runtime mounts a prebuilt **seed** snapshot of the base template `node_modules` (React, Vite, TypeScript, …) as a starting point, then runs `npm install --prefer-offline` so only the missing **delta** is fetched. This speeds up **every** generated project, even ones that add extra libraries. If the seed is absent, it transparently falls back to a full install.
+- After the first successful install, the resulting `node_modules` is cached per-project in IndexedDB, so later reloads skip installing entirely.
+
+The seed ships as a static asset under `public/snapshots/` and is **generated at setup** (it is git-ignored, keeping the repo lean). Generate it once in Chrome/Chromium:
+
+```bash
+npm run dev            # in one terminal
+npm run prepare:seed   # boots a WebContainer, installs the base deps, writes public/snapshots/
+```
+
+This produces `public/snapshots/<hash>.bin` plus a `manifest.json`. Regenerate it whenever the template's base dependencies change. The seed is optional — Telar works without it, just with a slower first preview.
+
 ## Deploy providers
 
 The **Publish** drawer always offers a `.zip` download. One-click deploy is configured **entirely in the app** — no env vars, no OAuth setup, and it works locally:
@@ -145,6 +162,7 @@ The UI ships in **English** and **Portuguese**. The locale is auto-detected from
 | `npm run typecheck` | TypeScript, no emit |
 | `npm test` | Unit tests (Vitest) |
 | `npm run test:e2e` | End-to-end tests (Playwright) |
+| `npm run prepare:seed` | Generate the preview dependency seed into `public/snapshots/` (see [Preview dependency seed](#preview-dependency-seed)) |
 
 ## Project structure
 
@@ -155,7 +173,7 @@ src/
   lib/
     ai/           Provider dispatch + CLI agent
     i18n/         Dictionaries, provider and hook
-    preview/      WebContainer runtime + module cache
+    preview/      WebContainer runtime + module cache + dependency seed loader
     project/      Types, templates, references, generation skills
     storage/      Local (IndexedDB) project persistence
     export/       ZIP export

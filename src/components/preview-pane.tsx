@@ -6,6 +6,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState }
 import { openPreviewWindow } from "@/lib/client/preview-window";
 import { useI18n } from "@/lib/i18n";
 import { createModuleCache } from "@/lib/preview/module-cache";
+import { createSeedSnapshotLoader } from "@/lib/preview/seed-snapshot-loader";
 import type { ProjectFileMap, ProjectReference } from "@/lib/project/types";
 import { WebContainerRuntime } from "@/lib/preview/webcontainer-runtime";
 
@@ -112,7 +113,10 @@ export const PreviewPane = forwardRef<PreviewHandle, PreviewPaneProps>(function 
             setState({ mode: "error", status: tRef.current("preview.error"), error: message });
           },
         },
-        { moduleCache: createModuleCache() },
+        {
+          moduleCache: createModuleCache(),
+          seedSnapshotLoader: createSeedSnapshotLoader(),
+        },
       );
     }
     return runtimeRef.current;

@@ -5,6 +5,7 @@ vi.mock("@webcontainer/api", () => ({ WebContainer: { boot } }));
 
 import { WebContainerRuntime } from "@/lib/preview/webcontainer-runtime";
 import type { ModuleCache } from "@/lib/preview/module-cache";
+import type { SeedSnapshotLoader } from "@/lib/preview/seed-snapshot-loader";
 import { createDefaultProjectFiles } from "@/lib/project/template";
 
 interface FakeContainer {
@@ -132,6 +133,55 @@ describe("dependency snapshot cache", () => {
     expect(ranNpmInstall(container)).toBe(true);
     const devLaunches = container.calls.spawn.filter((call) => call[0] === "npm" && call[1] === "run");
     expect(devLaunches).toHaveLength(2);
+    expect(events.onError).not.toHaveBeenCalled();
+  });
+});
+
+describe("seed snapshot", () => {
+  it("monta o seed e ainda instala o delta no cache miss", async () => {
+    const container = createFakeContainer();
+    boot.mockResolvedValue(container);
+    const store = new Map<string, Uint8Array>();
+    const cache: ModuleCache = {
+      load: async (key) => store.get(key),
+      save: async (key, bytes) => {
+        store.set(key, bytes);
+      },
+    };
+    const seed: SeedSnapshotLoader = { load: async () => new Uint8Array([1, 2, 3]) };
+
+    const runtime = new WebContainerRuntime(createEvents(), { moduleCache: cache, seedSnapshotLoader: seed });
+    await runtime.sync(createDefaultProjectFiles());
+
+    // Seed mounted into node_modules, install still runs, result cached.
+    expect(container.calls.mount.some((options) => options?.mountPoint === "node_modules")).toBe(true);
+    expect(ranNpmInstall(container)).toBe(true);
+    expect(store.size).toBe(1);
+  });
+
+  it("prioriza o cache exato do IndexedDB sobre o seed", async () => {
+    const container = createFakeContainer();
+    boot.mockResolvedValue(container);
+    const cache: ModuleCache = { load: async () => new Uint8Array([7, 7, 7]), save: async () => {} };
+    const seed: SeedSnapshotLoader = { load: vi.fn(async () => new Uint8Array([1, 2, 3])) };
+
+    const runtime = new WebContainerRuntime(createEvents(), { moduleCache: cache, seedSnapshotLoader: seed });
+    await runtime.sync(createDefaultProjectFiles());
+
+    expect(ranNpmInstall(container)).toBe(false);
+    expect(seed.load).not.toHaveBeenCalled();
+  });
+
+  it("segue funcionando quando o seed não está disponível", async () => {
+    const container = createFakeContainer();
+    boot.mockResolvedValue(container);
+    const events = createEvents();
+    const seed: SeedSnapshotLoader = { load: async () => undefined };
+
+    const runtime = new WebContainerRuntime(events, { seedSnapshotLoader: seed });
+    await runtime.sync(createDefaultProjectFiles());
+
+    expect(ranNpmInstall(container)).toBe(true);
     expect(events.onError).not.toHaveBeenCalled();
   });
 });

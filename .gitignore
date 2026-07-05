@@ -9,5 +9,5 @@ tsconfig.tsbuildinfo
 *.log
 .env
 .env*.local
-docs/
+docs/superpowers/
 .superpowers/

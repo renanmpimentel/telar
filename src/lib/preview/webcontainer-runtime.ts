@@ -1,6 +1,7 @@
 "use client";
 
 import type { ModuleCache } from "@/lib/preview/module-cache";
+import type { SeedSnapshotLoader } from "@/lib/preview/seed-snapshot-loader";
 import { assertValidReferencePath, decodeBase64ToUint8Array } from "@/lib/project/references";
 import type { ProjectFileMap, ProjectReference } from "@/lib/project/types";
 
@@ -51,6 +52,7 @@ interface RuntimeEvents {
 interface RuntimeOptions {
   bootTimeoutMs?: number;
   moduleCache?: ModuleCache | null;
+  seedSnapshotLoader?: SeedSnapshotLoader | null;
 }
 
 const DEFAULT_BOOT_TIMEOUT_MS = 120_000;
@@ -62,6 +64,7 @@ export class WebContainerRuntime {
   private bootPromise?: Promise<WebContainerInstance>;
   private serverReadyResolvers: Array<() => void> = [];
   private readonly moduleCache: ModuleCache | null;
+  private readonly seedSnapshotLoader: SeedSnapshotLoader | null;
 
   constructor(
     private readonly events: RuntimeEvents,
@@ -75,6 +78,12 @@ export class WebContainerRuntime {
     // Pass an explicit `moduleCache` (e.g. createModuleCache()) to enable it;
     // defaults to off so unit tests stay free of IndexedDB.
     this.moduleCache = options.moduleCache ?? null;
+    // A prebuilt seed snapshot ships the base template dependencies as a static
+    // asset. On a cache miss we mount it as a warm starting point so the ensuing
+    // `npm install` only adds the delta instead of installing from scratch. It is
+    // best-effort: a missing/unreachable seed simply falls through to a clean
+    // install. Defaults to off so unit tests stay free of network access.
+    this.seedSnapshotLoader = options.seedSnapshotLoader ?? null;
   }
 
   async sync(files: ProjectFileMap, references: ProjectReference[] = []): Promise<void> {
@@ -158,6 +167,26 @@ export class WebContainerRuntime {
     return dist;
   }
 
+  /**
+   * Installs the given files' dependencies and exports the resulting
+   * `node_modules` as a binary snapshot. Used offline (via the dev-only
+   * `/dev/seed` page) to prebuild the base template seed shipped under
+   * `/snapshots/`; it is not part of the normal preview flow.
+   */
+  async exportSeedSnapshot(files: ProjectFileMap): Promise<Uint8Array> {
+    if (!globalThis.crossOriginIsolated) {
+      throw new Error("Seed generation requires cross-origin isolation. Use Chrome/Chromium.");
+    }
+
+    const container = await this.boot();
+    this.events.onStatus("Mounting template");
+    await container.mount(toWebContainerTree(files));
+    await this.install(container);
+
+    this.events.onStatus("Exporting node_modules snapshot");
+    return container.export("node_modules", { format: "binary" });
+  }
+
   /** Returns true when dependencies were remounted from the cache, false after a fresh install. */
   private async ensureDependencies(container: WebContainerInstance, signature: string): Promise<boolean> {
     if (this.moduleCache) {
@@ -166,6 +195,19 @@ export class WebContainerRuntime {
         this.events.onStatus("Restoring cached dependencies");
         await container.mount(cached, { mountPoint: "node_modules" });
         return true;
+      }
+    }
+
+    // No exact per-user cache: mount the prebuilt base seed (if shipped) so the
+    // install below only reconciles the delta. `npm install` still runs on top —
+    // it rebuilds any node_modules/.bin dropped in the export/mount round-trip and
+    // adds dependencies the seed does not cover — so this stays a pure speed-up
+    // and returns false (a fresh install, not a trusted cache hit).
+    if (this.seedSnapshotLoader) {
+      const seed = await this.seedSnapshotLoader.load().catch(() => undefined);
+      if (seed) {
+        this.events.onStatus("Preparing dependencies");
+        await container.mount(seed, { mountPoint: "node_modules" });
       }
     }
 

@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "prepare:seed": "playwright test tests/e2e/generate-seed.spec.ts"
   },
   "dependencies": {
     "@webcontainer/api": "^1.6.4",
