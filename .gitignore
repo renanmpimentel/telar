@@ -4,7 +4,10 @@ playwright-report/
 test-results/
 coverage/
 dist/
+public/snapshots/
 tsconfig.tsbuildinfo
 *.log
 .env
 .env*.local
+docs/
+.superpowers/
